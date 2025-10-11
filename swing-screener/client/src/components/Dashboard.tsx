@@ -140,31 +140,48 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const [scanResults, performance] = await Promise.all([
+      const [statusResponse, scanResultsResponse, performanceResponse] = await Promise.all([
+        api.get('/status'),
         api.get('/scan-results'),
         api.get('/performance')
       ]);
 
+      const status = statusResponse.data;
+      const scanResults = scanResultsResponse.data;
+      const performance = performanceResponse.data;
+
       setDashboardData({
-        scanResults: scanResults.data,
-        performance: performance.data
+        scanResults: {
+          totalStocks: status?.totalStocks || 0,
+          qualifiedStocks: status?.qualifiedStocks || 0,
+          successRate: status?.successRate || 0,
+          lastScanTime: status?.lastScan || new Date().toISOString(),
+          scanDuration: status?.scanDuration || 0
+        },
+        performance: {
+          todayPnl: performance?.todayPnl || 0,
+          todayPnlPercent: performance?.todayPnlPercent || 0,
+          weekPnl: performance?.weekPnl || 0,
+          weekPnlPercent: performance?.weekPnlPercent || 0
+        }
       });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      // Use mock data for demonstration
+      setSnack({ open: true, msg: 'Failed to fetch dashboard data', severity: 'error' });
+      // Use fallback data
       setDashboardData({
         scanResults: {
-          totalStocks: 50,
-          qualifiedStocks: 12,
-          successRate: 8.0,
+          totalStocks: 0,
+          qualifiedStocks: 0,
+          successRate: 0,
           lastScanTime: new Date().toISOString(),
-          scanDuration: 45
+          scanDuration: 0
         },
         performance: {
-          todayPnl: 1250.50,
-          todayPnlPercent: 0.16,
-          weekPnl: 8750.25,
-          weekPnlPercent: 1.14
+          todayPnl: 0,
+          todayPnlPercent: 0,
+          weekPnl: 0,
+          weekPnlPercent: 0
         }
       });
     } finally {
@@ -179,18 +196,18 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
       setScanProgress(0);
       setScanStatus('Starting scan...');
       
-      // Simulate scan progress
-      for (let i = 0; i <= 100; i += 10) {
-        setScanProgress(i);
-        setScanStatus(`Scanning stocks... ${i}%`);
-        await new Promise(resolve => setTimeout(resolve, 200));
+      // Call the real API
+      const response = await api.post('/start-scan');
+      
+      if (response.data.success) {
+        setScanStatus('Scan started successfully!');
+        setSnack({ open: true, msg: 'Stock scan started successfully!', severity: 'success' });
+        
+        // Refresh data after scan
+        await fetchDashboardData();
+      } else {
+        setSnack({ open: true, msg: response.data.message || 'Failed to start scan', severity: 'error' });
       }
-      
-      setScanStatus('Scan completed!');
-      setSnack({ open: true, msg: 'Stock scan completed successfully!', severity: 'success' });
-      
-      // Refresh data after scan
-      await fetchDashboardData();
     } catch (error) {
       console.error('Error starting scan:', error);
       setSnack({ open: true, msg: 'Failed to start scan', severity: 'error' });

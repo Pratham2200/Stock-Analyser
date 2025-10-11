@@ -157,29 +157,27 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
   ];
 
   useEffect(() => {
-    api.get('status')
-      .then(res => setStatus(res.data))
-      .catch(err => {
+    const fetchStatus = async () => {
+      try {
+        const response = await api.get('/status');
+        setStatus(response.data);
+        
+        // Also fetch scan results
+        const scanResponse = await api.get('/scan-results');
+        if (scanResponse.data.success) {
+          setScanResults(scanResponse.data.data || []);
+        }
+      } catch (err) {
         console.error('Status fetch error:', err);
-        // Use mock data for demonstration
-        setStatus({
-          uptime: 3600,
-          lastScan: new Date().toISOString(),
-          totalStocks: 150,
-          qualifiedStocks: 12,
-          successRate: 8.0,
-          cronTime: '6:00 PM',
-          timezone: 'Asia/Kolkata',
-          running: false,
-          sheetUrl: 'https://docs.google.com/spreadsheets/d/example'
-        });
-        setScanResults(mockScanResults);
         setSnack({ 
           open: true, 
-          msg: `Using demo data - ${(err as any).response?.data?.error || (err as Error).message}`, 
-          severity: 'warning' 
+          msg: `Failed to fetch status: ${(err as any).response?.data?.error || (err as Error).message}`, 
+          severity: 'error' 
         });
-      });
+      }
+    };
+    
+    fetchStatus();
   }, [setSnack]);
 
   const onManualScan = async (): Promise<void> => {
@@ -188,34 +186,28 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
     setScanProgress(0);
     
     try {
-      // Simulate scan progress
-      const progressInterval = setInterval(() => {
-        setScanProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(progressInterval);
-            setScanning(false);
-            setScanResults(mockScanResults);
-            setSnack({ 
-              open: true, 
-              msg: `Analysis complete! ${mockScanResults.filter(r => r.status === 'qualified').length} stocks qualified.`, 
-              severity: 'success' 
-            });
-            return 100;
-          }
-          return prev + Math.random() * 15;
-        });
-      }, 200);
-
-      const res = await api.post('start-scan');
-      setSnack({ open: true, msg: `Scan complete. ${res.data.count ?? 0} stocks found.`, severity: 'success' });
+      const res = await api.post('/start-scan');
       
-      // Refresh status after scan
-      const statusRes = await api.get('status');
-      setStatus(statusRes.data);
+      if (res.data.success) {
+        setSnack({ open: true, msg: `Scan started successfully!`, severity: 'success' });
+        
+        // Refresh status and results after scan
+        const [statusRes, scanRes] = await Promise.all([
+          api.get('/status'),
+          api.get('/scan-results')
+        ]);
+        
+        setStatus(statusRes.data);
+        if (scanRes.data.success) {
+          setScanResults(scanRes.data.data || []);
+        }
+      } else {
+        setSnack({ open: true, msg: res.data.message || 'Failed to start scan', severity: 'error' });
+      }
     } catch (err) {
       setSnack({ open: true, msg: 'Scan failed: ' + ((err as any)?.response?.data?.error || (err as Error).message), severity: 'error' });
-      setScanning(false);
     } finally {
+      setScanning(false);
       setManualScanLoading(false);
     }
   };

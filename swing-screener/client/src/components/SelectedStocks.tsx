@@ -78,11 +78,13 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
       const response = await fetchData('/selected');
       
       if (response.success) {
-        setStocks(response.data);
+        setStocks(response.data || []);
       } else {
         setError('Failed to fetch selected stocks');
+        setSnack({ open: true, msg: 'Failed to fetch selected stocks', severity: 'error' });
       }
     } catch (err) {
+      console.error('Error fetching selected stocks:', err);
       setError('Error fetching selected stocks');
       setSnack({ open: true, msg: 'Error fetching selected stocks', severity: 'error' });
     } finally {

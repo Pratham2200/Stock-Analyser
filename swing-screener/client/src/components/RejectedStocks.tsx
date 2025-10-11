@@ -121,13 +121,15 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
       const response = await fetchData(`/rejected?page=${page}&limit=10`);
       
       if (response.success) {
-        setStocks(response.data);
+        setStocks(response.data || []);
         setTotalPages(response.pagination?.totalPages || 1);
         setTotalStocks(response.pagination?.total || 0);
       } else {
         setError('Failed to fetch rejected stocks');
+        setSnack({ open: true, msg: 'Failed to fetch rejected stocks', severity: 'error' });
       }
     } catch (err) {
+      console.error('Error fetching rejected stocks:', err);
       setError('Error fetching rejected stocks');
       setSnack({ open: true, msg: 'Error fetching rejected stocks', severity: 'error' });
     } finally {
