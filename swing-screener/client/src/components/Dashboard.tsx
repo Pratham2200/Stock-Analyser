@@ -102,39 +102,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
   const [activeTab, setActiveTab] = useState<number>(0);
   const [speedDialOpen, setSpeedDialOpen] = useState<boolean>(false);
 
-  // Mock data for demonstration
-  const mockStocks: Stock[] = [
-    {
-      id: '1',
-      symbol: 'RELIANCE',
-      name: 'Reliance Industries Ltd',
-      currentPrice: 2456.75,
-      change: 12.50,
-      changePercent: 0.51,
-      sector: 'Energy',
-      qualified: true
-    },
-    {
-      id: '2',
-      symbol: 'TCS',
-      name: 'Tata Consultancy Services',
-      currentPrice: 3456.25,
-      change: -8.75,
-      changePercent: -0.25,
-      sector: 'IT',
-      qualified: true
-    },
-    {
-      id: '3',
-      symbol: 'HDFC',
-      name: 'HDFC Bank Ltd',
-      currentPrice: 1456.80,
-      change: 5.25,
-      changePercent: 0.36,
-      sector: 'Banking',
-      qualified: false
-    }
-  ];
+  // Initialize with empty data - will be populated by API calls
 
   // Fetch dashboard data
   const fetchDashboardData = async () => {
@@ -202,9 +170,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
       if (response.data.success) {
         setScanStatus('Scan started successfully!');
         setSnack({ open: true, msg: 'Stock scan started successfully!', severity: 'success' });
-        
-        // Refresh data after scan
-        await fetchDashboardData();
+      
+      // Refresh data after scan
+      await fetchDashboardData();
       } else {
         setSnack({ open: true, msg: response.data.message || 'Failed to start scan', severity: 'error' });
       }
@@ -242,12 +210,12 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
   }
 
   return (
-    <Box sx={{ p: 3, backgroundColor: '#f5f5f5', minHeight: '100vh' }}>
+    <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
         <Box>
           <Typography variant="h3" component="h1" fontWeight="bold" color="primary">
-            📊 Stock Analysis Dashboard
+            Stock Analysis Dashboard
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
             Real-time market analysis and stock screening
@@ -296,11 +264,11 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
       )}
 
       {/* Main Stats Cards */}
-      <Grid container spacing={3} mb={4}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 4 }}>
         {/* Today's Performance */}
-        <Grid item xs={12} md={3}>
+        <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
           <Card sx={{ 
-            background: dashboardData?.performance?.todayPnlPercent && dashboardData.performance.todayPnlPercent >= 0 
+            background: dashboardData?.performance?.todayPnlPercent !== undefined && dashboardData.performance.todayPnlPercent >= 0 
               ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' 
               : 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
             color: 'white',
@@ -315,14 +283,14 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                 ₹{dashboardData?.performance?.todayPnl?.toLocaleString() || '0'}
               </Typography>
               <Typography variant="h6">
-                {dashboardData?.performance?.todayPnlPercent >= 0 ? '+' : ''}{dashboardData?.performance?.todayPnlPercent?.toFixed(2) || '0'}%
+                {dashboardData?.performance?.todayPnlPercent !== undefined && dashboardData.performance.todayPnlPercent >= 0 ? '+' : ''}{dashboardData?.performance?.todayPnlPercent?.toFixed(2) || '0'}%
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
         {/* Scan Results */}
-        <Grid item xs={12} md={3}>
+        <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
           <Card sx={{ 
             background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
             height: '100%'
@@ -343,10 +311,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
         {/* Success Rate */}
-        <Grid item xs={12} md={3}>
+        <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
           <Card sx={{ 
             background: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
             height: '100%'
@@ -364,10 +332,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
         {/* Weekly Performance */}
-        <Grid item xs={12} md={3}>
+        <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
           <Card sx={{ 
             background: dashboardData?.performance?.weekPnlPercent && dashboardData.performance.weekPnlPercent >= 0 
               ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
@@ -390,8 +358,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
 
       {/* Tabs for different views */}
       <Card sx={{ mb: 4 }}>
@@ -408,8 +376,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
           <Box sx={{ p: 3 }}>
             <Typography variant="h5" fontWeight="bold" mb={3}>Stock Analysis</Typography>
             
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+              <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
                 <Card sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Box textAlign="center">
                     <BarChart sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
@@ -421,8 +389,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                     </Typography>
                   </Box>
                 </Card>
-              </Grid>
-              <Grid item xs={12} md={6}>
+              </Box>
+              <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
                 <Card sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Box textAlign="center">
                     <PieChart sx={{ fontSize: 60, color: 'secondary.main', mb: 2 }} />
@@ -434,8 +402,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                     </Typography>
                   </Box>
                 </Card>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           </Box>
         )}
 
@@ -444,8 +412,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
           <Box sx={{ p: 3 }}>
             <Typography variant="h5" fontWeight="bold" mb={3}>Performance Metrics</Typography>
             
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+              <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
                 <Card sx={{ p: 3, textAlign: 'center' }}>
                   <ShowChart sx={{ fontSize: 40, color: 'primary.main', mb: 2 }} />
                   <Typography variant="h4" fontWeight="bold" color="primary">
@@ -455,8 +423,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                     Weekly Performance
                   </Typography>
                 </Card>
-              </Grid>
-              <Grid item xs={12} md={6}>
+              </Box>
+              <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
                 <Card sx={{ p: 3, textAlign: 'center' }}>
                   <Timeline sx={{ fontSize: 40, color: 'success.main', mb: 2 }} />
                   <Typography variant="h4" fontWeight="bold" color="success.main">
@@ -466,8 +434,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                     Today's Performance
                   </Typography>
                 </Card>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           </Box>
         )}
 

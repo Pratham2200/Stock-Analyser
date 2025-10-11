@@ -113,8 +113,9 @@ fi
 # Step 4: Start services
 echo ""
 echo -e "${BLUE}🎯 Step 4: Starting services...${NC}"
-echo -e "${GREEN}📊 Backend: http://localhost:4000${NC}"
-echo -e "${GREEN}🎨 Frontend: http://localhost:5173${NC}"
+echo -e "${GREEN}📊 Backend API: http://localhost:4000${NC}"
+echo -e "${GREEN}🎨 Frontend App: http://localhost:5173${NC}"
+echo -e "${YELLOW}💡 Note: Frontend will proxy API calls to backend${NC}"
 echo ""
 
 # Create a trap to handle cleanup on exit
@@ -131,7 +132,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Start both services using concurrently
-echo -e "${BLUE}🚀 Starting both backend and frontend...${NC}"
+echo -e "${BLUE}🚀 Starting Backend (Port 4000) and Frontend (Port 5173)...${NC}"
 echo ""
 
 # Use concurrently to start both services
@@ -140,8 +141,26 @@ npx concurrently \
     --prefix "[{name}]" \
     --names "Backend,Frontend" \
     --prefix-colors "blue,green" \
+    --restart-tries 3 \
     "npm run dev" \
     "cd client && npm run dev"
 
 # If we reach here, concurrently has exited
 echo -e "${YELLOW}🛑 Services stopped${NC}"
+
+# Optional: Verify services are running on correct ports
+echo ""
+echo -e "${BLUE}🔍 Verifying services are running on correct ports...${NC}"
+sleep 5
+
+if curl -s http://localhost:4000/api/status >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Backend is running on port 4000${NC}"
+else
+    echo -e "${RED}❌ Backend not responding on port 4000${NC}"
+fi
+
+if curl -s http://localhost:5173 >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Frontend is running on port 5173${NC}"
+else
+    echo -e "${RED}❌ Frontend not responding on port 5173${NC}"
+fi

@@ -5,7 +5,6 @@ import {
   Typography,
   Card,
   CardContent,
-  Grid,
   Chip,
   Table,
   TableBody,
@@ -130,7 +129,7 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
     <Box sx={{ p: 3 }}>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          ✅ Selected Stocks
+          Selected Stocks
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           Stocks that passed the analysis and are ready for trading
@@ -149,11 +148,11 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
         </Box>
       </Box>
 
-      <Grid container spacing={3}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
         {stocks.map((stock) => {
           const pnl = calculatePnL(stock.current_price, stock.entry_price);
           return (
-            <Grid item xs={12} md={6} lg={4} key={stock.symbol}>
+            <Box sx={{ flex: '1 1 300px', minWidth: '300px' }} key={stock.symbol}>
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -181,24 +180,24 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                     </Typography>
                   </Box>
 
-                  <Grid container spacing={1} sx={{ mb: 2 }}>
-                    <Grid item xs={6}>
+                  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                    <Box sx={{ flex: 1 }}>
                       <Typography variant="caption" color="text.secondary">
                         Stop Loss
                       </Typography>
                       <Typography variant="body2" fontWeight="bold" color="error.main">
                         {formatPrice(stock.stop_loss)}
                       </Typography>
-                    </Grid>
-                    <Grid item xs={6}>
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
                       <Typography variant="caption" color="text.secondary">
                         Current Price
                       </Typography>
                       <Typography variant="body2" fontWeight="bold">
                         {formatPrice(stock.current_price)}
                       </Typography>
-                    </Grid>
-                  </Grid>
+                    </Box>
+                  </Box>
 
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="caption" color="text.secondary" gutterBottom>
@@ -232,10 +231,10 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                   </Box>
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           );
         })}
-      </Grid>
+      </Box>
 
       {stocks.length === 0 && (
         <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -256,8 +255,8 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
         <DialogContent>
           {selectedStock && (
             <Box>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
                   <Typography variant="h6" gutterBottom>
                     Basic Information
                   </Typography>
@@ -273,9 +272,9 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                     <Typography variant="body2" color="text.secondary">Scan Date</Typography>
                     <Typography variant="body1">{new Date(selectedStock.scan_date).toLocaleDateString()}</Typography>
                   </Box>
-                </Grid>
+                </Box>
                 
-                <Grid item xs={12} md={6}>
+                <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
                   <Typography variant="h6" gutterBottom>
                     Trading Parameters
                   </Typography>
@@ -291,8 +290,8 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                     <Typography variant="body2" color="text.secondary">Position Size</Typography>
                     <Typography variant="body1" fontWeight="bold">{selectedStock.position_size} shares</Typography>
                   </Box>
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
             </Box>
           )}
         </DialogContent>

@@ -18,6 +18,7 @@ export function createRoutes(services: any, _repositories: any, pool: any): Rout
 
   // Scan routes
   router.get('/status', scanController.getStatus);
+  router.get('/scan-progress', scanController.getProgress);
   router.post('/start-scan', scanController.startScan);
   router.get('/scan-results', scanController.getResults);
   router.get('/stocks', scanController.getStocks);

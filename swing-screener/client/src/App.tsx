@@ -1,7 +1,7 @@
 // src/App.tsx
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { CssBaseline, Snackbar, Alert, Box } from '@mui/material';
+import { Snackbar, Alert, Box } from '@mui/material';
 import Home from './pages/Home';
 import Dashboard from './components/Dashboard';
 import ScannedStocks from './components/ScannedStocks';
@@ -34,26 +34,23 @@ function AppContent(): React.JSX.Element {
   };
   
   return (
-    <>
-      <CssBaseline />
-      <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-        <Navigation currentPage={currentPage} onNavigate={handleNavigate} />
-        <Box sx={{ flexGrow: 1 }}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard setSnack={setSnack} />} />
-            <Route path="/scan" element={<Home setSnack={setSnack} />} />
-            <Route path="/scanned" element={<ScannedStocks setSnack={setSnack} />} />
-            <Route path="/selected" element={<SelectedStocks setSnack={setSnack} />} />
-            <Route path="/rejected" element={<RejectedStocks setSnack={setSnack} />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </Box>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Navigation currentPage={currentPage} onNavigate={handleNavigate} />
+      <Box sx={{ flexGrow: 1 }}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard setSnack={setSnack} />} />
+          <Route path="/scan" element={<Home setSnack={setSnack} />} />
+          <Route path="/scanned" element={<ScannedStocks setSnack={setSnack} />} />
+          <Route path="/selected" element={<SelectedStocks setSnack={setSnack} />} />
+          <Route path="/rejected" element={<RejectedStocks setSnack={setSnack} />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
       </Box>
       <Snackbar open={snack.open} autoHideDuration={4000} onClose={() => setSnack({ open: false, msg: '', severity: 'success' })}>
         <Alert severity={snack.severity}>{snack.msg}</Alert>
       </Snackbar>
-    </>
+    </Box>
   );
 }
 

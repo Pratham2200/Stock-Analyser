@@ -173,7 +173,7 @@ const ScannedStocks: React.FC<ScannedStocksProps> = ({ setSnack }) => {
     <Box sx={{ p: 3 }}>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          📊 Scanned Stocks
+          Scanned Stocks
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           All stocks fetched from the scanner with detailed analysis
@@ -185,12 +185,12 @@ const ScannedStocks: React.FC<ScannedStocksProps> = ({ setSnack }) => {
             variant="outlined" 
           />
           <Chip 
-            label={`Qualified: ${stocks.filter(s => s.qualified).length}`} 
+            label={`Qualified: ${(stocks || []).filter(s => s.qualified).length}`} 
             color="success" 
             variant="outlined" 
           />
           <Chip 
-            label={`Rejected: ${stocks.filter(s => !s.qualified).length}`} 
+            label={`Rejected: ${(stocks || []).filter(s => !s.qualified).length}`} 
             color="error" 
             variant="outlined" 
           />
@@ -211,7 +211,7 @@ const ScannedStocks: React.FC<ScannedStocksProps> = ({ setSnack }) => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {stocks.map((stock) => (
+            {(stocks || []).map((stock) => (
               <TableRow key={stock.id} hover>
                 <TableCell>
                   <Box>

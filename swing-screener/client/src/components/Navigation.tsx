@@ -14,12 +14,12 @@ import {
   ListItemText,
   Divider,
   Avatar,
-  Badge,
   Menu,
   MenuItem,
   Chip,
-  useTheme,
-  useMediaQuery
+  useTheme as useMuiTheme,
+  useMediaQuery,
+  Tooltip
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -40,8 +40,12 @@ import {
   Search,
   Analytics,
   Speed,
-  Security
+  Security,
+  DarkMode,
+  LightMode
 } from '@mui/icons-material';
+import { useTheme } from '../contexts/ThemeContext';
+import ThemeToggle from './ThemeToggle';
 
 interface NavigationProps {
   currentPage: string;
@@ -51,7 +55,8 @@ interface NavigationProps {
 const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const theme = useTheme();
+  const { darkMode, toggleDarkMode } = useTheme();
+  const theme = useMuiTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
 
@@ -72,32 +77,35 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
   };
 
   const drawer = (
-    <Box sx={{ width: 280 }}>
-      <Box sx={{ p: 3, backgroundColor: 'primary.main', color: 'white' }}>
+    <Box sx={{ width: 300, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ p: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
         <Box display="flex" alignItems="center" mb={2}>
-          <Avatar sx={{ mr: 2, backgroundColor: 'white', color: 'primary.main' }}>
+          <Avatar 
+            sx={{ 
+              mr: 2, 
+              backgroundColor: 'rgba(255,255,255,0.2)', 
+              color: 'white',
+              width: 48,
+              height: 48,
+              backdropFilter: 'blur(10px)',
+            }}
+          >
             <Analytics />
           </Avatar>
           <Box>
-            <Typography variant="h6" fontWeight="bold">
+            <Typography variant="h6" fontWeight="bold" sx={{ fontSize: '1.1rem' }}>
               Stock Analysis Pro
             </Typography>
-            <Typography variant="body2" color="rgba(255,255,255,0.8)">
+            <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ fontWeight: 500 }}>
               Professional Trading Dashboard
             </Typography>
           </Box>
         </Box>
-        <Chip 
-          label="Live" 
-          color="success" 
-          size="small" 
-          sx={{ backgroundColor: 'rgba(255,255,255,0.2)', color: 'white' }}
-        />
       </Box>
       
-      <List sx={{ p: 2 }}>
+      <List sx={{ p: 2, flexGrow: 1 }}>
         {menuItems.map((item) => (
-          <ListItem key={item.id} disablePadding sx={{ mb: 0.5 }}>
+          <ListItem key={item.id} disablePadding sx={{ mb: 1 }}>
             <ListItemButton
               selected={currentPage === item.id}
               onClick={() => {
@@ -105,11 +113,17 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
                 setDrawerOpen(false);
               }}
               sx={{
-                borderRadius: 2,
+                borderRadius: 3,
+                py: 1.5,
+                px: 2,
+                transition: 'all 0.2s ease-in-out',
                 '&.Mui-selected': {
                   backgroundColor: `${item.color}.main`,
                   color: 'white',
+                  boxShadow: 3,
+                  transform: 'translateX(4px)',
                   '&:hover': {
+                    transform: 'translateX(6px)',
                     backgroundColor: `${item.color}.dark`,
                   },
                   '& .MuiListItemIcon-root': {
@@ -117,17 +131,19 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
                   },
                 },
                 '&:hover': {
-                  backgroundColor: `${item.color}.light`,
+                  backgroundColor: 'rgba(255,255,255,0.1)',
+                  transform: 'translateX(2px)',
                 },
               }}
             >
-              <ListItemIcon sx={{ minWidth: 40 }}>
+              <ListItemIcon sx={{ minWidth: 44 }}>
                 {item.icon}
               </ListItemIcon>
               <ListItemText 
                 primary={item.label}
                 primaryTypographyProps={{
-                  fontWeight: currentPage === item.id ? 'bold' : 'normal'
+                  fontWeight: currentPage === item.id ? 'bold' : 600,
+                  fontSize: '0.95rem',
                 }}
               />
             </ListItemButton>
@@ -138,26 +154,11 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
       <Divider sx={{ mx: 2 }} />
       
       <Box sx={{ p: 2 }}>
-        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          Quick Stats
-        </Typography>
-        <Box display="flex" justifyContent="space-between" mb={1}>
-          <Typography variant="body2">Portfolio Value:</Typography>
-          <Typography variant="body2" fontWeight="bold" color="success.main">
-            ₹7.74L
+        <Box display="flex" alignItems="center" justifyContent="space-between">
+          <Typography variant="body2" color="rgba(255,255,255,0.8)" sx={{ fontWeight: 600 }}>
+            Theme
           </Typography>
-        </Box>
-        <Box display="flex" justifyContent="space-between" mb={1}>
-          <Typography variant="body2">Today's P&L:</Typography>
-          <Typography variant="body2" fontWeight="bold" color="success.main">
-            +₹1,250
-          </Typography>
-        </Box>
-        <Box display="flex" justifyContent="space-between">
-          <Typography variant="body2">Active Positions:</Typography>
-          <Typography variant="body2" fontWeight="bold">
-            3
-          </Typography>
+          <ThemeToggle size="small" />
         </Box>
       </Box>
     </Box>
@@ -165,44 +166,109 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
 
   return (
     <>
-      <AppBar position="sticky" sx={{ backgroundColor: 'white', color: 'text.primary', boxShadow: 1 }}>
-        <Toolbar>
+      <AppBar 
+        position="sticky" 
+        sx={{ 
+          backgroundColor: 'background.paper',
+          color: 'text.primary',
+          boxShadow: 2,
+          backdropFilter: 'blur(8px)',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <Toolbar sx={{ minHeight: '64px !important' }}>
           <IconButton
             edge="start"
             color="inherit"
             aria-label="menu"
             onClick={() => setDrawerOpen(true)}
-            sx={{ mr: 2 }}
+            sx={{ 
+              mr: 2,
+              '&:hover': {
+                backgroundColor: 'action.hover',
+                transform: 'scale(1.05)',
+              },
+              transition: 'all 0.2s ease-in-out',
+            }}
           >
             <MenuIcon />
           </IconButton>
           
           <Box display="flex" alignItems="center" flexGrow={1}>
-            <Avatar sx={{ mr: 2, backgroundColor: 'primary.main' }}>
+            <Avatar 
+              sx={{ 
+                mr: 2, 
+                backgroundColor: 'primary.main',
+                width: 40,
+                height: 40,
+                boxShadow: 2,
+              }}
+            >
               <Analytics />
             </Avatar>
             <Box>
-              <Typography variant="h6" fontWeight="bold" color="primary">
+              <Typography 
+                variant="h6" 
+                fontWeight="bold" 
+                color="primary"
+                sx={{ 
+                  background: 'linear-gradient(45deg, #1976d2, #42a5f5)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
                 Stock Analysis Pro
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
                 Professional Trading Dashboard
               </Typography>
             </Box>
           </Box>
 
           <Box display="flex" alignItems="center" gap={1}>
-            <IconButton color="inherit">
-              <Badge badgeContent={3} color="error">
-                <Notifications />
-              </Badge>
-            </IconButton>
+            <ThemeToggle />
             
-            <IconButton color="inherit" onClick={handleProfileMenuOpen}>
-              <Avatar sx={{ width: 32, height: 32, backgroundColor: 'primary.main' }}>
-                <Person />
-              </Avatar>
-            </IconButton>
+            <Tooltip title="Notifications">
+              <IconButton 
+                color="inherit"
+                sx={{
+                  '&:hover': {
+                    backgroundColor: 'action.hover',
+                    transform: 'scale(1.05)',
+                  },
+                  transition: 'all 0.2s ease-in-out',
+                }}
+              >
+                <Notifications />
+              </IconButton>
+            </Tooltip>
+            
+            <Tooltip title="Profile">
+              <IconButton 
+                color="inherit" 
+                onClick={handleProfileMenuOpen}
+                sx={{
+                  '&:hover': {
+                    backgroundColor: 'action.hover',
+                    transform: 'scale(1.05)',
+                  },
+                  transition: 'all 0.2s ease-in-out',
+                }}
+              >
+                <Avatar 
+                  sx={{ 
+                    width: 32, 
+                    height: 32, 
+                    backgroundColor: 'primary.main',
+                    boxShadow: 2,
+                  }}
+                >
+                  <Person />
+                </Avatar>
+              </IconButton>
+            </Tooltip>
           </Box>
         </Toolbar>
       </AppBar>
@@ -213,8 +279,10 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
         onClose={() => setDrawerOpen(false)}
         sx={{
           '& .MuiDrawer-paper': {
-            width: 280,
+            width: 300,
             boxSizing: 'border-box',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
           },
         }}
       >

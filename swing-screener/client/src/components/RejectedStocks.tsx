@@ -182,7 +182,7 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
     <Box sx={{ p: 3 }}>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          ❌ Rejected Stocks
+          Rejected Stocks
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           Stocks that failed the analysis criteria
@@ -201,9 +201,9 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
         </Box>
       </Box>
 
-      <Grid container spacing={3}>
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
         {stocks.map((stock) => (
-          <Grid item xs={12} md={6} lg={4} key={stock.id}>
+          <Box sx={{ flex: "1 1 300px", minWidth: "300px" }} key={stock.id}>
             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <CardContent sx={{ flexGrow: 1 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -304,9 +304,9 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
                 </Box>
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
         ))}
-      </Grid>
+      </Box>
 
       {stocks.length === 0 && (
         <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -330,33 +330,33 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
               <Typography variant="h6" gutterBottom>
                 Overall Analysis
               </Typography>
-              <Grid container spacing={2} sx={{ mb: 3 }}>
-                <Grid item xs={6}>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 3, mb: 3 }}>
+                <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" color="text.secondary">Grade</Typography>
                   <Chip
                     label={selectedStock.strategy_details.overall.grade}
                     color={getGradeColor(selectedStock.strategy_details.overall.grade) as any}
                   />
-                </Grid>
-                <Grid item xs={6}>
+                </Box>
+                <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" color="text.secondary">Score</Typography>
                   <Typography variant="body1" fontWeight="bold">
                     {selectedStock.strategy_details.overall.score}/100
                   </Typography>
-                </Grid>
-                <Grid item xs={6}>
+                </Box>
+                <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" color="text.secondary">Risk Level</Typography>
                   <Typography variant="body1" fontWeight="bold">
                     {selectedStock.strategy_details.overall.riskLevel}
                   </Typography>
-                </Grid>
-                <Grid item xs={6}>
+                </Box>
+                <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" color="text.secondary">Confidence</Typography>
                   <Typography variant="body1" fontWeight="bold">
                     {selectedStock.strategy_details.overall.confidence ? (Number(selectedStock.strategy_details.overall.confidence) * 100).toFixed(1) : '0.0'}%
                   </Typography>
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
 
               <Divider sx={{ my: 2 }} />
 
