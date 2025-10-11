@@ -23,6 +23,17 @@ export class ScanController extends BaseController {
     }
   });
 
+  getProgress = this.handleAsync(async (req: Request, res: Response) => {
+    this.logRequest(req, 'GET', '/api/scan-progress');
+    
+    try {
+      const progress = await this.scanService.getScanProgress();
+      this.success(res, progress);
+    } catch (error) {
+      this.error(res, (error as Error).message, 500);
+    }
+  });
+
   startScan = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'POST', '/api/start-scan');
     

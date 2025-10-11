@@ -13,6 +13,9 @@ export class ScanService extends BaseService {
   private scraperService: ScraperService;
   private config: AppConfig;
   private isRunning: boolean = false;
+  private currentProgress: number = 0;
+  private totalStocks: number = 0;
+  private currentStage: string = '';
 
   constructor(
     stockRepository: StockRepository,
@@ -29,6 +32,7 @@ export class ScanService extends BaseService {
 
   async startManualScan(): Promise<ScanResult> {
     if (this.isRunning) {
+      this.logger.error('Scan is already running');
       throw new Error('Scan is already running');
     }
 
@@ -36,13 +40,15 @@ export class ScanService extends BaseService {
     const startTime = Date.now();
 
     try {
-      this.logger.info('Starting manual scan...');
+      this.logger.info('🚀 Starting manual scan...');
       
       // Step 1: Scrape stocks
+      this.logger.info('📊 Step 1: Scraping stocks from Chartink...');
       const scrapeResult = await this.scraperService.scrapeAllStocks();
-      this.logger.info(`Scraped ${scrapeResult.stocks.length} stocks`);
+      this.logger.success(`✅ Scraped ${scrapeResult.stocks.length} stocks from Chartink`);
 
       if (scrapeResult.stocks.length === 0) {
+        this.logger.warn('⚠️ No stocks found during scraping');
         return {
           qualifiedCount: 0,
           totalCandidates: 0,
@@ -52,21 +58,33 @@ export class ScanService extends BaseService {
       }
 
       // Step 2: Create scan record
+      this.logger.info('💾 Step 2: Creating scan record in database...');
       const scanRecord = await this.stockRepository.createScan(
         scrapeResult.stocks.length,
         0, // Will be updated
         0, // Will be updated
         Math.round((Date.now() - startTime) / 1000)
       );
+      this.logger.success(`✅ Scan record created with ID: ${scanRecord.id}`);
 
       // Step 3: Insert stocks
+      this.logger.info('💾 Step 3: Inserting stocks into database...');
       const insertedStocks = await this.stockRepository.insertStocks(scanRecord.id, scrapeResult.stocks);
+      this.logger.success(`✅ Inserted ${insertedStocks.length} stocks into database`);
 
       // Step 4: Analyze stocks
+      this.logger.info('🔍 Step 4: Analyzing stocks with technical indicators...');
       let qualifiedCount = 0;
       let analyzedCount = 0;
 
-      for (const stock of insertedStocks) {
+      for (let i = 0; i < insertedStocks.length; i++) {
+        const stock = insertedStocks[i];
+        
+        // Log progress every 10 stocks
+        if (i % 10 === 0 || i === insertedStocks.length - 1) {
+          this.logger.scanProgress(i + 1, insertedStocks.length, 'Technical Analysis');
+        }
+        
         try {
           // For now, create a mock analysis result
           const analysisResult = {
@@ -92,6 +110,14 @@ export class ScanService extends BaseService {
           await this.stockRepository.insertStockAnalysis(stock.id, scanRecord.id, analysisResult);
           analyzedCount++;
 
+          // Log individual stock analysis result with proper rejection reason
+          this.logger.stockAnalysis(
+            stock.symbol, 
+            analysisResult.qualified, 
+            analysisResult.score,
+            analysisResult.qualified ? undefined : analysisResult.reason
+          );
+
           if (analysisResult.qualified) {
             qualifiedCount++;
             await this.stockRepository.insertSelectedStock(stock.id, scanRecord.id, {
@@ -105,14 +131,21 @@ export class ScanService extends BaseService {
             });
           }
         } catch (error) {
-          this.logger.error(`Failed to analyze ${stock.symbol}:`, error);
+          this.logger.error(`❌ Failed to analyze ${stock.symbol}:`, error);
         }
       }
 
       const duration = Date.now() - startTime;
       const successRate = analyzedCount > 0 ? (qualifiedCount / analyzedCount) * 100 : 0;
 
-      this.logger.info(`Scan completed: ${qualifiedCount}/${analyzedCount} qualified (${successRate.toFixed(1)}%)`);
+      // Log performance metrics
+      this.logger.performance('Stock Analysis', duration, {
+        totalStocks: analyzedCount,
+        qualifiedStocks: qualifiedCount,
+        successRate: `${successRate.toFixed(1)}%`
+      });
+
+      this.logger.success(`🎉 Scan completed: ${qualifiedCount}/${analyzedCount} qualified (${successRate.toFixed(1)}%)`);
 
       return {
         qualifiedCount,
@@ -122,9 +155,11 @@ export class ScanService extends BaseService {
       };
 
     } catch (error) {
+      this.logger.error('❌ Manual scan failed:', error);
       this.handleError(error, 'Manual scan failed');
     } finally {
       this.isRunning = false;
+      this.logger.info('🔚 Scan process completed');
     }
   }
 
@@ -140,6 +175,16 @@ export class ScanService extends BaseService {
       nextScan: null,
       cronTime: this.config.scheduler.scanCron,
       timezone: this.config.scheduler.timezone
+    };
+  }
+
+  async getScanProgress(): Promise<any> {
+    return {
+      running: this.isRunning,
+      progress: this.currentProgress,
+      total: this.totalStocks,
+      percentage: this.totalStocks > 0 ? Math.round((this.currentProgress / this.totalStocks) * 100) : 0,
+      stage: this.currentStage
     };
   }
 

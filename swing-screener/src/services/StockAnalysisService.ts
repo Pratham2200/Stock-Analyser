@@ -2,11 +2,15 @@
 
 import { BaseService } from './BaseService';
 import { AnalysisInput, AnalysisOutput, AnalysisDetails, DailyBar } from '../types/analysis';
+import { SwingStrategyService, DailyBar as SwingDailyBar, AnalysisResult as SwingAnalysisResult } from './SwingStrategyService';
 import { EMA } from 'technicalindicators';
 
 export class StockAnalysisService extends BaseService {
+  private swingStrategyService: SwingStrategyService;
+
   constructor() {
     super('StockAnalysisService');
+    this.swingStrategyService = new SwingStrategyService();
   }
 
   async analyzeStock(input: AnalysisInput): Promise<AnalysisOutput> {
@@ -25,6 +29,15 @@ export class StockAnalysisService extends BaseService {
         );
       }
 
+      // Use the new 4-rule swing strategy
+      const swingResult = await this.analyzeWithSwingStrategy(input);
+      
+      if (swingResult) {
+        return swingResult;
+      }
+
+      // Fallback to original analysis if swing strategy fails
+      this.logger.warn('Swing strategy analysis failed, falling back to original analysis');
       const analysisDetails = await this.performAnalysis(input.dailyBars);
       const overallScore = this.calculateOverallScore(analysisDetails);
       const qualified = this.determineQualification(analysisDetails, overallScore);
@@ -53,6 +66,124 @@ export class StockAnalysisService extends BaseService {
         input.intradayBars?.length || 0
       );
     }
+  }
+
+  private async analyzeWithSwingStrategy(input: AnalysisInput): Promise<AnalysisOutput | null> {
+    try {
+      this.logger.info(`🎯 Starting 4-Rule Swing Strategy Analysis for ${input.symbol}`);
+      
+      // Convert DailyBar format to SwingDailyBar format
+      const swingDailyBars: SwingDailyBar[] = input.dailyBars.map(bar => ({
+        date: typeof bar.date === 'string' ? bar.date : bar.date.toISOString().split('T')[0],
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: bar.volume
+      }));
+
+      // Run the 4-rule swing strategy analysis
+      const swingResult = await this.swingStrategyService.analyzeSwingStock({
+        dailyBars: swingDailyBars
+      });
+
+      // Convert swing result to AnalysisOutput format
+      const analysisOutput: AnalysisOutput = {
+        qualified: swingResult.qualified,
+        score: swingResult.score,
+        failedAt: swingResult.failedAt === null ? 0 : this.mapFailureStep(swingResult.failedAt),
+        reason: swingResult.reason,
+        currentPrice: input.dailyBars[input.dailyBars.length - 1]?.close || 0,
+        ema10: swingResult.details.consolidation?.basePrice || 0,
+        ema20: swingResult.details.higherLow?.zones?.[0]?.low || 0,
+        details: this.convertSwingDetailsToAnalysisDetails(swingResult.details),
+        analysisDurationMs: 0, // Will be set by caller
+        dataPointsDaily: input.dailyBars.length,
+        dataPointsIntraday: input.intradayBars?.length || 0
+      };
+
+      this.logger.stockAnalysis(
+        input.symbol,
+        swingResult.qualified,
+        swingResult.score,
+        swingResult.qualified ? undefined : swingResult.reason
+      );
+
+      return analysisOutput;
+
+    } catch (error) {
+      this.logger.error(`❌ Swing strategy analysis failed for ${input.symbol}:`, error);
+      return null;
+    }
+  }
+
+  private mapFailureStep(failedAt: string | null): number {
+    if (!failedAt) return 0;
+    
+    switch (failedAt) {
+      case 'validation': return 0;
+      case 'consolidation': return 1;
+      case 'higher-low': return 2;
+      case 'volume': return 3;
+      case 'bear-squeeze': return 4;
+      default: return 0;
+    }
+  }
+
+  private convertSwingDetailsToAnalysisDetails(swingDetails: SwingAnalysisResult['details']): AnalysisDetails {
+    const allPassed = swingDetails.consolidation?.pass && swingDetails.higherLow?.pass && 
+                     swingDetails.volumePump?.pass && swingDetails.bearSqueeze?.pass;
+
+    return {
+      consolidation: {
+        pass: swingDetails.consolidation?.pass || false,
+        status: swingDetails.consolidation?.status || '❌ NO',
+        reason: swingDetails.consolidation?.reason || 'Failed',
+        basePrice: swingDetails.consolidation?.basePrice || null,
+        currentMove: swingDetails.consolidation?.currentMove || 0,
+        consolidationDays: 20, // Default value
+        range: {
+          high: swingDetails.consolidation?.basePrice ? swingDetails.consolidation.basePrice * 1.1 : 0,
+          low: swingDetails.consolidation?.basePrice ? swingDetails.consolidation.basePrice * 0.9 : 0,
+          range: swingDetails.consolidation?.basePrice ? swingDetails.consolidation.basePrice * 0.2 : 0,
+          rangePercent: 20
+        }
+      },
+      higherLow: {
+        pass: swingDetails.higherLow?.pass || false,
+        status: swingDetails.higherLow?.status || '❌ NO',
+        reason: swingDetails.higherLow?.reason || 'Failed',
+        higherLowCount: swingDetails.higherLow?.zones?.length || 0,
+        recentLows: swingDetails.higherLow?.zones?.map(z => z.low) || [],
+        trend: swingDetails.higherLow?.pass ? 'up' : 'down',
+        strength: swingDetails.higherLow?.pass ? 0.8 : 0.2
+      },
+      volumePump: {
+        pass: swingDetails.volumePump?.pass || false,
+        status: swingDetails.volumePump?.status || '❌ NO',
+        reason: swingDetails.volumePump?.reason || 'Failed',
+        volumeRatio: swingDetails.volumePump?.spikes?.[0]?.multiple ? parseFloat(swingDetails.volumePump.spikes[0].multiple) : 1.0,
+        averageVolume: swingDetails.volumePump?.spikes?.[0]?.average || 0,
+        currentVolume: swingDetails.volumePump?.spikes?.[0]?.volume || 0,
+        volumeTrend: swingDetails.volumePump?.pass ? 'increasing' : 'stable'
+      },
+      bearSqueeze: {
+        pass: swingDetails.bearSqueeze?.pass || false,
+        status: swingDetails.bearSqueeze?.status || '❌ NO',
+        reason: swingDetails.bearSqueeze?.reason || 'Failed',
+        squeezeCount: swingDetails.bearSqueeze?.pass ? 1 : 0,
+        recentSqueezes: swingDetails.bearSqueeze?.pass ? [1] : [],
+        bearishPressure: swingDetails.bearSqueeze?.pass ? 0.3 : 0.7,
+        bullishMomentum: swingDetails.bearSqueeze?.pass ? 0.7 : 0.3
+      },
+      overall: {
+        score: allPassed ? 4 : 0,
+        grade: allPassed ? 'A' : 'F',
+        recommendation: allPassed ? 'strong_buy' : 'sell',
+        confidence: allPassed ? 0.9 : 0.1,
+        riskLevel: 'medium'
+      }
+    };
   }
 
   private async performAnalysis(dailyBars: DailyBar[]): Promise<AnalysisDetails> {

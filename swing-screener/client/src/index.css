@@ -17,7 +17,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8f9fa;
+  background-color: var(--background-color, #f8f9fa);
   height: 100%;
 }
 
@@ -33,17 +33,17 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--scrollbar-track, #f1f1f1);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--scrollbar-thumb, #c1c1c1);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: var(--scrollbar-thumb-hover, #a8a8a8);
 }
 
 /* Loading animations */
@@ -324,7 +324,7 @@ body {
 }
 
 .metric-card {
-  background: white;
+  background: var(--paper-background, white);
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -365,14 +365,14 @@ body {
 
 /* Stock table enhancements */
 .stock-table {
-  background: white;
+  background: var(--paper-background, white);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .stock-table th {
-  background-color: #f8f9fa;
+  background-color: var(--background-color, #f8f9fa);
   font-weight: 600;
   color: #495057;
   border-bottom: 2px solid #dee2e6;
@@ -396,7 +396,7 @@ body {
 }
 
 .position-card {
-  background: white;
+  background: var(--paper-background, white);
   border-radius: 12px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);

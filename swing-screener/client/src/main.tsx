@@ -4,24 +4,12 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import './index.css'
 import App from './App'
-
-// Create a default Material-UI theme
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-  },
-})
+import { ThemeContextProvider } from './contexts/ThemeContext'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <ThemeContextProvider>
       <App />
-    </ThemeProvider>
+    </ThemeContextProvider>
   </StrictMode>,
 )
