@@ -1,0 +1,8 @@
+-- Add missing EMA columns to stock_analysis table
+ALTER TABLE stock_analysis 
+ADD COLUMN IF NOT EXISTS current_price DECIMAL(10,2),
+ADD COLUMN IF NOT EXISTS ema10 DECIMAL(10,2),
+ADD COLUMN IF NOT EXISTS ema20 DECIMAL(10,2),
+ADD COLUMN IF NOT EXISTS fail_step INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS fail_reason TEXT,
+ADD COLUMN IF NOT EXISTS strategy_details JSONB;

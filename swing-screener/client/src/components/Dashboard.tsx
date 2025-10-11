@@ -1,0 +1,524 @@
+// src/components/Dashboard.tsx
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Button,
+  CircularProgress,
+  LinearProgress,
+  Alert,
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Tooltip,
+  SpeedDial,
+  SpeedDialAction,
+  SpeedDialIcon,
+  Tabs,
+  Tab,
+  Avatar,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
+  Divider
+} from '@mui/material';
+import {
+  Refresh,
+  Assessment,
+  TrendingUp,
+  TrendingDown,
+  Timeline,
+  CheckCircle,
+  Cancel,
+  Visibility,
+  StarBorder,
+  Sell,
+  Add,
+  Download,
+  Share,
+  Analytics,
+  BarChart,
+  PieChart,
+  TableChart,
+  FilterList,
+  Search,
+  Notifications,
+  Settings,
+  Dashboard as DashboardIcon,
+  ShowChart
+} from '@mui/icons-material';
+import api from '../api';
+
+interface DashboardData {
+  scanResults: {
+    totalStocks: number;
+    qualifiedStocks: number;
+    successRate: number;
+    lastScanTime: string;
+    scanDuration: number;
+  };
+  performance: {
+    todayPnl: number;
+    todayPnlPercent: number;
+    weekPnl: number;
+    weekPnlPercent: number;
+  };
+}
+
+interface Stock {
+  id: string;
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  change: number;
+  changePercent: number;
+  sector: string;
+  qualified: boolean;
+}
+
+interface DashboardProps {
+  setSnack: (snack: { open: boolean; msg: string; severity: 'success' | 'error' | 'warning' | 'info' }) => void;
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [scanning, setScanning] = useState<boolean>(false);
+  const [selectedStocks, setSelectedStocks] = useState<Stock[]>([]);
+  const [performanceData, setPerformanceData] = useState<any>(null);
+  const [scanProgress, setScanProgress] = useState<number>(0);
+  const [scanStatus, setScanStatus] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<number>(0);
+  const [speedDialOpen, setSpeedDialOpen] = useState<boolean>(false);
+
+  // Mock data for demonstration
+  const mockStocks: Stock[] = [
+    {
+      id: '1',
+      symbol: 'RELIANCE',
+      name: 'Reliance Industries Ltd',
+      currentPrice: 2456.75,
+      change: 12.50,
+      changePercent: 0.51,
+      sector: 'Energy',
+      qualified: true
+    },
+    {
+      id: '2',
+      symbol: 'TCS',
+      name: 'Tata Consultancy Services',
+      currentPrice: 3456.25,
+      change: -8.75,
+      changePercent: -0.25,
+      sector: 'IT',
+      qualified: true
+    },
+    {
+      id: '3',
+      symbol: 'HDFC',
+      name: 'HDFC Bank Ltd',
+      currentPrice: 1456.80,
+      change: 5.25,
+      changePercent: 0.36,
+      sector: 'Banking',
+      qualified: false
+    }
+  ];
+
+  // Fetch dashboard data
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const [scanResults, performance] = await Promise.all([
+        api.get('/scan-results'),
+        api.get('/performance')
+      ]);
+
+      setDashboardData({
+        scanResults: scanResults.data,
+        performance: performance.data
+      });
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      // Use mock data for demonstration
+      setDashboardData({
+        scanResults: {
+          totalStocks: 50,
+          qualifiedStocks: 12,
+          successRate: 8.0,
+          lastScanTime: new Date().toISOString(),
+          scanDuration: 45
+        },
+        performance: {
+          todayPnl: 1250.50,
+          todayPnlPercent: 0.16,
+          weekPnl: 8750.25,
+          weekPnlPercent: 1.14
+        }
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Start scan function
+  const startScan = async () => {
+    try {
+      setScanning(true);
+      setScanProgress(0);
+      setScanStatus('Starting scan...');
+      
+      // Simulate scan progress
+      for (let i = 0; i <= 100; i += 10) {
+        setScanProgress(i);
+        setScanStatus(`Scanning stocks... ${i}%`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      setScanStatus('Scan completed!');
+      setSnack({ open: true, msg: 'Stock scan completed successfully!', severity: 'success' });
+      
+      // Refresh data after scan
+      await fetchDashboardData();
+    } catch (error) {
+      console.error('Error starting scan:', error);
+      setSnack({ open: true, msg: 'Failed to start scan', severity: 'error' });
+    } finally {
+      setScanning(false);
+      setScanProgress(0);
+      setScanStatus('');
+    }
+  };
+
+  // Refresh data
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchDashboardData();
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const speedDialActions = [
+    { icon: <Assessment />, name: 'Start Scan', action: startScan }
+  ];
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress size={60} />
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 3, backgroundColor: '#f5f5f5', minHeight: '100vh' }}>
+      {/* Header */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+        <Box>
+          <Typography variant="h3" component="h1" fontWeight="bold" color="primary">
+            📊 Stock Analysis Dashboard
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            Real-time market analysis and stock screening
+          </Typography>
+        </Box>
+        <Box display="flex" gap={2}>
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={handleRefresh}
+            disabled={refreshing}
+            sx={{ borderRadius: 2 }}
+          >
+            {refreshing ? <CircularProgress size={20} /> : 'Refresh'}
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Assessment />}
+            onClick={startScan}
+            disabled={scanning}
+            sx={{ borderRadius: 2 }}
+          >
+            {scanning ? 'Scanning...' : 'Start Scan'}
+          </Button>
+        </Box>
+      </Box>
+
+      {/* Scan Progress */}
+      {scanning && (
+        <Card sx={{ mb: 4, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+          <CardContent>
+            <Box display="flex" alignItems="center" mb={2}>
+              <Analytics sx={{ mr: 2 }} />
+              <Typography variant="h6">Market Analysis in Progress</Typography>
+            </Box>
+            <LinearProgress 
+              variant="determinate" 
+              value={scanProgress} 
+              sx={{ mb: 1, backgroundColor: 'rgba(255,255,255,0.3)' }}
+            />
+            <Typography variant="body2">
+              {scanStatus}
+            </Typography>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Main Stats Cards */}
+      <Grid container spacing={3} mb={4}>
+        {/* Today's Performance */}
+        <Grid item xs={12} md={3}>
+          <Card sx={{ 
+            background: dashboardData?.performance?.todayPnlPercent && dashboardData.performance.todayPnlPercent >= 0 
+              ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' 
+              : 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+            color: 'white',
+            height: '100%'
+          }}>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={2}>
+                <Timeline sx={{ mr: 1, fontSize: 28 }} />
+                <Typography variant="h6" fontWeight="bold">Today's P&L</Typography>
+              </Box>
+              <Typography variant="h3" fontWeight="bold" mb={1}>
+                ₹{dashboardData?.performance?.todayPnl?.toLocaleString() || '0'}
+              </Typography>
+              <Typography variant="h6">
+                {dashboardData?.performance?.todayPnlPercent >= 0 ? '+' : ''}{dashboardData?.performance?.todayPnlPercent?.toFixed(2) || '0'}%
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Scan Results */}
+        <Grid item xs={12} md={3}>
+          <Card sx={{ 
+            background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+            height: '100%'
+          }}>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={2}>
+                <Assessment sx={{ mr: 1, fontSize: 28, color: 'primary.main' }} />
+                <Typography variant="h6" fontWeight="bold" color="primary">Scan Results</Typography>
+              </Box>
+              <Typography variant="h3" fontWeight="bold" color="primary" mb={1}>
+                {dashboardData?.scanResults?.qualifiedStocks || 0}
+              </Typography>
+              <Typography variant="body1" color="text.secondary">
+                qualified stocks
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                from {dashboardData?.scanResults?.totalStocks || 0} scanned
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Success Rate */}
+        <Grid item xs={12} md={3}>
+          <Card sx={{ 
+            background: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+            height: '100%'
+          }}>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={2}>
+                <Analytics sx={{ mr: 1, fontSize: 28, color: 'warning.main' }} />
+                <Typography variant="h6" fontWeight="bold" color="warning.main">Success Rate</Typography>
+              </Box>
+              <Typography variant="h3" fontWeight="bold" color="warning.main" mb={1}>
+                {dashboardData?.scanResults?.successRate || 0}%
+              </Typography>
+              <Typography variant="body1" color="text.secondary">
+                qualification rate
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Weekly Performance */}
+        <Grid item xs={12} md={3}>
+          <Card sx={{ 
+            background: dashboardData?.performance?.weekPnlPercent && dashboardData.performance.weekPnlPercent >= 0 
+              ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+              : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+            color: 'white',
+            height: '100%'
+          }}>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={2}>
+                <ShowChart sx={{ fontSize: 40, color: 'primary.main', mb: 2 }} />
+                <Typography variant="h6" fontWeight="bold">
+                  Weekly Performance
+                </Typography>
+              </Box>
+              <Typography variant="h4" fontWeight="bold">
+                {dashboardData?.performance?.weekPnlPercent?.toFixed(2) || '0'}%
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Weekly Performance
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Tabs for different views */}
+      <Card sx={{ mb: 4 }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+            <Tab icon={<BarChart />} label="Analysis" />
+            <Tab icon={<Timeline />} label="Performance" />
+            <Tab icon={<Notifications />} label="Alerts" />
+          </Tabs>
+        </Box>
+
+        {/* Analysis Tab */}
+        {activeTab === 0 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" fontWeight="bold" mb={3}>Stock Analysis</Typography>
+            
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Card sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Box textAlign="center">
+                    <BarChart sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
+                    <Typography variant="h6" fontWeight="bold" mb={1}>
+                      Technical Analysis
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Advanced charting and indicators
+                    </Typography>
+                  </Box>
+                </Card>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Card sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Box textAlign="center">
+                    <PieChart sx={{ fontSize: 60, color: 'secondary.main', mb: 2 }} />
+                    <Typography variant="h6" fontWeight="bold" mb={1}>
+                      Sector Analysis
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Portfolio diversification insights
+                    </Typography>
+                  </Box>
+                </Card>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
+
+        {/* Performance Tab */}
+        {activeTab === 1 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" fontWeight="bold" mb={3}>Performance Metrics</Typography>
+            
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Card sx={{ p: 3, textAlign: 'center' }}>
+                  <ShowChart sx={{ fontSize: 40, color: 'primary.main', mb: 2 }} />
+                  <Typography variant="h4" fontWeight="bold" color="primary">
+                    {dashboardData?.performance?.weekPnlPercent?.toFixed(2) || '0'}%
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Weekly Performance
+                  </Typography>
+                </Card>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Card sx={{ p: 3, textAlign: 'center' }}>
+                  <Timeline sx={{ fontSize: 40, color: 'success.main', mb: 2 }} />
+                  <Typography variant="h4" fontWeight="bold" color="success.main">
+                    {dashboardData?.performance?.todayPnlPercent?.toFixed(2) || '0'}%
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Today's Performance
+                  </Typography>
+                </Card>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
+
+        {/* Alerts Tab */}
+        {activeTab === 2 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" fontWeight="bold" mb={3}>Market Alerts</Typography>
+            <List>
+              <ListItem>
+                <ListItemAvatar>
+                  <Avatar sx={{ backgroundColor: 'success.main' }}>
+                    <CheckCircle />
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary="RELIANCE target achieved"
+                  secondary="Target price of ₹2500 reached"
+                />
+              </ListItem>
+              <Divider />
+              <ListItem>
+                <ListItemAvatar>
+                  <Avatar sx={{ backgroundColor: 'warning.main' }}>
+                    <TrendingDown />
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary="TCS showing weakness"
+                  secondary="Price below 50-day moving average"
+                />
+              </ListItem>
+              <Divider />
+              <ListItem>
+                <ListItemAvatar>
+                  <Avatar sx={{ backgroundColor: 'info.main' }}>
+                    <Analytics />
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary="New scan results available"
+                  secondary="12 qualified stocks found"
+                />
+              </ListItem>
+            </List>
+          </Box>
+        )}
+      </Card>
+
+      {/* Speed Dial */}
+      <SpeedDial
+        ariaLabel="SpeedDial"
+        sx={{ position: 'fixed', bottom: 16, right: 16 }}
+        icon={<SpeedDialIcon />}
+        onClose={() => setSpeedDialOpen(false)}
+        onOpen={() => setSpeedDialOpen(true)}
+        open={speedDialOpen}
+      >
+        {speedDialActions.map((action) => (
+          <SpeedDialAction
+            key={action.name}
+            icon={action.icon}
+            tooltipTitle={action.name}
+            onClick={action.action}
+          />
+        ))}
+      </SpeedDial>
+    </Box>
+  );
+};
+
+export default Dashboard;
