@@ -109,13 +109,15 @@ const ScannedStocks: React.FC<ScannedStocksProps> = ({ setSnack }) => {
       const response = await fetchData(`/stocks?page=${page}&limit=10`);
       
       if (response.success) {
-        setStocks(response.data);
+        setStocks(response.data || []);
         setTotalPages(response.pagination?.totalPages || 1);
         setTotalStocks(response.pagination?.total || 0);
       } else {
         setError('Failed to fetch scanned stocks');
+        setSnack({ open: true, msg: 'Failed to fetch scanned stocks', severity: 'error' });
       }
     } catch (err) {
+      console.error('Error fetching scanned stocks:', err);
       setError('Error fetching scanned stocks');
       setSnack({ open: true, msg: 'Error fetching scanned stocks', severity: 'error' });
     } finally {
