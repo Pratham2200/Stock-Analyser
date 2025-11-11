@@ -4,29 +4,34 @@ import { BaseService } from './BaseService';
 import { StockRepository } from '../repositories/StockRepository';
 import { StockAnalysisService } from './StockAnalysisService';
 import { ScraperService } from './ScraperService';
-import { NotificationService } from './NotificationService';
-import { AppConfig } from '../types';
-import { ScanResult } from '../types';
+import { StockDataService } from './StockDataService';
+import { AppConfig, StockData, ScanResult } from '../types';
+import { ScanRecord, StockRecord } from '../types/database';
 
 export class ScanService extends BaseService {
   private stockRepository: StockRepository;
   private scraperService: ScraperService;
+  private stockDataService: StockDataService;
   private config: AppConfig;
   private isRunning: boolean = false;
   private currentProgress: number = 0;
   private totalStocks: number = 0;
   private currentStage: string = '';
 
+  private analysisService: StockAnalysisService;
+
   constructor(
     stockRepository: StockRepository,
-    _analysisService: StockAnalysisService,
+    analysisService: StockAnalysisService,
     scraperService: ScraperService,
-    _notificationService: NotificationService,
+    stockDataService: StockDataService,
     config: AppConfig
   ) {
     super('ScanService');
     this.stockRepository = stockRepository;
+    this.analysisService = analysisService;
     this.scraperService = scraperService;
+    this.stockDataService = stockDataService;
     this.config = config;
   }
 
@@ -42,96 +47,215 @@ export class ScanService extends BaseService {
     try {
       this.logger.info('🚀 Starting manual scan...');
       
-      // Step 1: Scrape stocks
-      this.logger.info('📊 Step 1: Scraping stocks from Chartink...');
-      const scrapeResult = await this.scraperService.scrapeAllStocks();
-      this.logger.success(`✅ Scraped ${scrapeResult.stocks.length} stocks from Chartink`);
+      // Step 1: Check if stocks exist for today
+      this.logger.info('🔍 Step 1: Checking if stocks were already scraped today...');
+      const hasStocksToday = await this.stockRepository.hasStocksForToday();
+      
+      let scrapeResult: { stocks: StockData[]; totalCount: number; duration: number };
+      let scanRecord: ScanRecord | null;
+      let insertedStocks: StockRecord[];
 
-      if (scrapeResult.stocks.length === 0) {
-        this.logger.warn('⚠️ No stocks found during scraping');
-        return {
-          qualifiedCount: 0,
-          totalCandidates: 0,
-          successRate: 0,
-          duration: Date.now() - startTime
+      if (hasStocksToday) {
+        // Fetch from database (cached)
+        this.logger.info('💾 Found stocks from today in database. Fetching from cache...');
+        const cachedStocks = await this.stockRepository.getStocksFromToday();
+        scrapeResult = {
+          stocks: cachedStocks,
+          totalCount: cachedStocks.length,
+          duration: 0 // No scraping time needed
         };
+        this.logger.success(`✅ Fetched ${cachedStocks.length} stocks from today's cache`);
+
+        // Get today's scan record (should always exist if hasStocksToday is true)
+        scanRecord = await this.stockRepository.getTodayScanRecord();
+        
+        if (!scanRecord) {
+          // This shouldn't happen if hasStocksToday is true, but handle edge case
+          this.logger.error('⚠️ No scan record found for today despite stocks existing. Creating new scan record...');
+          scanRecord = await this.stockRepository.createScan(
+            cachedStocks.length,
+            0, // Will be updated
+            0, // Will be updated
+            Math.round((Date.now() - startTime) / 1000)
+          );
+        } else {
+          this.logger.info(`✅ Using existing scan record: ${scanRecord.id} from today`);
+        }
+
+        // Get stocks with their IDs from today's scan (using the scan record ID)
+        // At this point scanRecord is guaranteed to be non-null
+        const stocksWithIds = await this.stockRepository.getStocksFromTodayWithIds(scanRecord!.id);
+        insertedStocks = stocksWithIds;
+        this.logger.success(`✅ Retrieved ${insertedStocks.length} stocks with IDs from database`);
+      } else {
+        // Scrape from website (first time today)
+        this.logger.info('📊 No stocks found for today. Scraping from Chartink...');
+        scrapeResult = await this.scraperService.scrapeAllStocks();
+        this.logger.success(`✅ Scraped ${scrapeResult.stocks.length} stocks from Chartink`);
+
+        if (scrapeResult.stocks.length === 0) {
+          this.logger.warn('⚠️ No stocks found during scraping');
+          return {
+            qualifiedCount: 0,
+            totalCandidates: 0,
+            successRate: 0,
+            duration: Date.now() - startTime
+          };
+        }
+
+        // Create scan record
+        this.logger.info('💾 Creating scan record in database...');
+        scanRecord = await this.stockRepository.createScan(
+          scrapeResult.stocks.length,
+          0, // Will be updated
+          0, // Will be updated
+          Math.round((Date.now() - startTime) / 1000)
+        );
+        this.logger.success(`✅ Scan record created with ID: ${scanRecord.id}`);
+
+        // Insert stocks
+        this.logger.info('💾 Inserting stocks into database...');
+        insertedStocks = await this.stockRepository.insertStocks(scanRecord!.id, scrapeResult.stocks);
+        this.logger.success(`✅ Inserted ${insertedStocks.length} stocks into database`);
       }
 
-      // Step 2: Create scan record
-      this.logger.info('💾 Step 2: Creating scan record in database...');
-      const scanRecord = await this.stockRepository.createScan(
-        scrapeResult.stocks.length,
-        0, // Will be updated
-        0, // Will be updated
-        Math.round((Date.now() - startTime) / 1000)
-      );
-      this.logger.success(`✅ Scan record created with ID: ${scanRecord.id}`);
+      // At this point, scanRecord is guaranteed to be non-null (set in both branches above)
+      if (!scanRecord) {
+        throw new Error('Scan record not created');
+      }
 
-      // Step 3: Insert stocks
-      this.logger.info('💾 Step 3: Inserting stocks into database...');
-      const insertedStocks = await this.stockRepository.insertStocks(scanRecord.id, scrapeResult.stocks);
-      this.logger.success(`✅ Inserted ${insertedStocks.length} stocks into database`);
-
-      // Step 4: Analyze stocks
-      this.logger.info('🔍 Step 4: Analyzing stocks with technical indicators...');
+      // Step 4: Check if analysis already exists for today's stocks
+      this.logger.info('🔍 Step 4: Checking if analysis already exists for today\'s stocks...');
+      const hasExistingAnalysis = await this.stockRepository.hasAnalysisForTodayStocks();
+      
       let qualifiedCount = 0;
       let analyzedCount = 0;
 
-      for (let i = 0; i < insertedStocks.length; i++) {
-        const stock = insertedStocks[i];
+      if (hasExistingAnalysis && hasStocksToday) {
+        // Analysis already exists for today - fetch and use existing results
+        this.logger.info('✅ Analysis already exists for today\'s stocks. Fetching existing results...');
+        const stocksWithAnalysis = await this.stockRepository.getTodayStocksWithAnalysis();
         
-        // Log progress every 10 stocks
-        if (i % 10 === 0 || i === insertedStocks.length - 1) {
-          this.logger.scanProgress(i + 1, insertedStocks.length, 'Technical Analysis');
-        }
+        analyzedCount = stocksWithAnalysis.length;
+        qualifiedCount = stocksWithAnalysis.filter((s: any) => s.qualified === true).length;
         
-        try {
-          // For now, create a mock analysis result
-          const analysisResult = {
-            qualified: Math.random() > 0.7, // 30% qualification rate
-            score: Math.floor(Math.random() * 100),
-            failedAt: 0,
-            reason: 'Mock analysis',
-            currentPrice: 100 + Math.random() * 1000,
-            ema10: 100 + Math.random() * 1000,
-            ema20: 100 + Math.random() * 1000,
-            details: {
-              consolidation: { pass: true, status: 'consolidated', reason: 'Mock', basePrice: 100, currentMove: 2, consolidationDays: 20, range: { high: 110, low: 90, range: 20, rangePercent: 20 } },
-              higherLow: { pass: true, status: 'higher_low', reason: 'Mock', higherLowCount: 2, recentLows: [90, 95], trend: 'up' as const, strength: 0.8 },
-              volumePump: { pass: false, status: 'no_volume_pump', reason: 'Mock', volumeRatio: 1.2, averageVolume: 1000, currentVolume: 1200, volumeTrend: 'increasing' as const },
-              bearSqueeze: { pass: true, status: 'bear_squeeze', reason: 'Mock', squeezeCount: 1, recentSqueezes: [], bearishPressure: 0.3, bullishMomentum: 0.7 },
-              overall: { score: 75, grade: 'B' as const, recommendation: 'buy' as const, confidence: 0.8, riskLevel: 'medium' as const }
-            },
-            analysisDurationMs: 100,
-            dataPointsDaily: 120,
-            dataPointsIntraday: 0
-          };
-
-          await this.stockRepository.insertStockAnalysis(stock.id, scanRecord.id, analysisResult);
-          analyzedCount++;
-
-          // Log individual stock analysis result with proper rejection reason
-          this.logger.stockAnalysis(
-            stock.symbol, 
-            analysisResult.qualified, 
-            analysisResult.score,
-            analysisResult.qualified ? undefined : analysisResult.reason
-          );
-
-          if (analysisResult.qualified) {
-            qualifiedCount++;
-            await this.stockRepository.insertSelectedStock(stock.id, scanRecord.id, {
-              entryPrice: analysisResult.currentPrice || 0,
-              stopLoss: (analysisResult.currentPrice || 0) * 0.95,
-              target1: (analysisResult.currentPrice || 0) * 1.15,
-              target2: (analysisResult.currentPrice || 0) * 1.30,
-              target3: (analysisResult.currentPrice || 0) * 1.50,
-              positionSize: 100,
-              positionValue: (analysisResult.currentPrice || 0) * 100
-            });
+        this.logger.success(`✅ Retrieved existing analysis: ${qualifiedCount}/${analyzedCount} qualified`);
+        this.logger.info('💡 To re-run analysis, wait until tomorrow or clear today\'s analysis records');
+      } else {
+        // No existing analysis - run full analysis
+        this.logger.info('🔍 Step 5: Running technical analysis on stocks...');
+        
+        for (let i = 0; i < insertedStocks.length; i++) {
+          const stock = insertedStocks[i];
+        
+          // Log progress every 10 stocks
+          if (i % 10 === 0 || i === insertedStocks.length - 1) {
+            this.logger.scanProgress(i + 1, insertedStocks.length, 'Technical Analysis');
           }
-        } catch (error) {
-          this.logger.error(`❌ Failed to analyze ${stock.symbol}:`, error);
+          
+          try {
+            // Fetch real stock data (daily bars) from Yahoo Finance
+            // Yahoo Finance rate limit: ~60 requests/minute recommended
+            // Add 1 second delay between requests to stay within limits
+            if (i > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+            }
+            
+            const dailyBars = await this.stockDataService.fetchDailyBars(stock.symbol, 120);
+            
+            if (dailyBars.length < 80) {
+              this.logger.warn(`⚠️ ${stock.symbol}: Insufficient data (${dailyBars.length} days). Minimum 80 days required. Skipping...`);
+              continue;
+            }
+            
+            // Perform real analysis using StockAnalysisService
+            const analysisResult = await this.analysisService.analyzeStock({
+              symbol: stock.symbol,
+              dailyBars: dailyBars,
+              intradayBars: undefined
+            });
+            
+            // Build detailed rejection reason from analysis details
+            // Only show the rule that actually failed (based on failedAt)
+            // Don't show subsequent rules that weren't checked due to early exit
+            let detailedReason = analysisResult.reason;
+            if (!analysisResult.qualified && analysisResult.details && analysisResult.failedAt) {
+              const details = analysisResult.details;
+              const failedAt = analysisResult.failedAt;
+              
+              // Only include the rule that actually failed
+              // ACTUAL rule execution order in SwingStrategyService:
+              // Rule 1: Consolidation (mapped to failedAt=1)
+              // Rule 2: Higher Low (mapped to failedAt=2)
+              // Rule 3: Volume Pump (mapped to failedAt=3)
+              // Rule 4: Bear Squeeze (mapped to failedAt=4)
+              if (failedAt === 1 && details.consolidation && !details.consolidation.pass) {
+                detailedReason = `Rule 1 (Consolidation): ${details.consolidation.reason || 'Failed'}`;
+              } else if (failedAt === 2 && details.higherLow && !details.higherLow.pass) {
+                detailedReason = `Rule 2 (Higher Low Structure): ${details.higherLow.reason || 'Failed'}`;
+              } else if (failedAt === 3 && details.volumePump && !details.volumePump.pass) {
+                detailedReason = `Rule 3 (Volume Pump): ${details.volumePump.reason || 'Failed'}`;
+              } else if (failedAt === 4 && details.bearSqueeze && !details.bearSqueeze.pass) {
+                detailedReason = `Rule 4 (Bear Squeeze): ${details.bearSqueeze.reason || 'Failed'}`;
+              }
+              // If failedAt doesn't match expected values, use original reason
+            }
+
+            await this.stockRepository.insertStockAnalysis(stock.id, scanRecord.id, analysisResult);
+            analyzedCount++;
+
+            // Log individual stock analysis result with detailed rejection reason
+            this.logger.stockAnalysis(
+              stock.symbol, 
+              analysisResult.qualified, 
+              analysisResult.score,
+              analysisResult.qualified ? undefined : detailedReason
+            );
+            
+            // Log detailed failure information for rejected stocks
+            if (!analysisResult.qualified) {
+              const failedAt = analysisResult.failedAt || 0;
+              const details = analysisResult.details;
+              
+              // Build rule status - only show rules that were actually checked
+              // ACTUAL execution order: Consolidation (1) -> Higher Low (2) -> Volume (3) -> Bear Squeeze (4)
+              const rules: Record<string, string> = {};
+              if (failedAt >= 1) {
+                rules.consolidation = details?.consolidation?.pass ? '✅' : '❌';
+              }
+              if (failedAt >= 2) {
+                rules.higherLow = details?.higherLow?.pass ? '✅' : '❌';
+              }
+              if (failedAt >= 3) {
+                rules.volumePump = details?.volumePump?.pass ? '✅' : '❌';
+              }
+              if (failedAt >= 4) {
+                rules.bearSqueeze = details?.bearSqueeze?.pass ? '✅' : '❌';
+              }
+              
+              this.logger.warn(`❌ ${stock.symbol} REJECTED at Rule ${failedAt || 'Unknown'}:`, {
+                reason: detailedReason,
+                score: analysisResult.score,
+                failedAt: failedAt,
+                rules: rules
+              });
+            }
+
+            if (analysisResult.qualified) {
+              qualifiedCount++;
+              await this.stockRepository.insertSelectedStock(stock.id, scanRecord.id, {
+                entryPrice: analysisResult.currentPrice || 0,
+                stopLoss: (analysisResult.currentPrice || 0) * 0.95,
+                target1: (analysisResult.currentPrice || 0) * 1.15,
+                target2: (analysisResult.currentPrice || 0) * 1.30,
+                target3: (analysisResult.currentPrice || 0) * 1.50,
+                positionSize: 100,
+                positionValue: (analysisResult.currentPrice || 0) * 100
+              });
+            }
+          } catch (error) {
+            this.logger.error(`❌ Failed to analyze ${stock.symbol}:`, error);
+          }
         }
       }
 
@@ -164,18 +288,50 @@ export class ScanService extends BaseService {
   }
 
   async getScanStatus(): Promise<any> {
-    return {
-      running: this.isRunning,
-      lastScan: {
-        start: null,
-        end: null,
-        count: 0,
-        error: null
-      },
-      nextScan: null,
-      cronTime: this.config.scheduler.scanCron,
-      timezone: this.config.scheduler.timezone
-    };
+    try {
+      // Get latest scan results
+      const latestScan = await this.stockRepository.getLatestScanResults();
+      
+      // Get overall statistics
+      const statistics = await this.stockRepository.getAnalysisStatistics();
+      
+      // Calculate metrics
+      // Note: Database returns snake_case, but TypeScript interface uses camelCase
+      // Using type assertion to access the actual database column names
+      const scanData = latestScan as any;
+      const totalStocks = scanData?.total_stocks_scraped || scanData?.totalStocksScraped || 0;
+      const qualifiedStocks = scanData?.stocks_passed || scanData?.stocksPassed || 0;
+      const analyzedStocks = scanData?.stocks_analyzed || scanData?.stocksAnalyzed || 0;
+      const successRate = analyzedStocks > 0 ? Math.round((qualifiedStocks / analyzedStocks) * 100) : 0;
+      
+      return {
+        running: this.isRunning,
+        totalStocks,
+        qualifiedStocks,
+        analyzedStocks,
+        successRate,
+        lastScan: scanData?.scan_date || scanData?.scanDate ? new Date(scanData.scan_date || scanData.scanDate).toISOString() : null,
+        scanDuration: scanData?.scan_duration_seconds || scanData?.scanDurationSeconds || 0,
+        nextScan: null,
+        cronTime: this.config.scheduler.scanCron,
+        timezone: this.config.scheduler.timezone
+      };
+    } catch (error) {
+      this.logger.error('Error in getScanStatus:', error);
+      // Return default values on error
+      return {
+        running: this.isRunning,
+        totalStocks: 0,
+        qualifiedStocks: 0,
+        analyzedStocks: 0,
+        successRate: 0,
+        lastScan: null,
+        scanDuration: 0,
+        nextScan: null,
+        cronTime: this.config.scheduler.scanCron,
+        timezone: this.config.scheduler.timezone
+      };
+    }
   }
 
   async getScanProgress(): Promise<any> {
@@ -193,17 +349,35 @@ export class ScanService extends BaseService {
   }
 
   async getStocksFromLatestScan(_page: number = 1, _limit: number = 10): Promise<{ stocks: any[], total: number }> {
-    const stocks = await this.stockRepository.getStocksFromLatestScan();
-    const total = stocks.length;
+    // Get all stocks (not just latest scan) to allow grouping by date
+    const allStocks = await this.stockRepository.getAllStocksWithAnalysis();
+    const total = allStocks.length;
     const startIndex = (_page - 1) * _limit;
     const endIndex = startIndex + _limit;
-    const paginatedStocks = stocks.slice(startIndex, endIndex);
+    const paginatedStocks = allStocks.slice(startIndex, endIndex);
     
     return { stocks: paginatedStocks, total };
   }
 
-  async getSelectedStocks(): Promise<any[]> {
-    return await this.stockRepository.getSelectedStocks();
+  async getSelectedStocks(page: number = 1, limit: number = 10): Promise<{ stocks: any[], total: number }> {
+    try {
+      const allStocks = await this.stockRepository.getSelectedStocks();
+      
+      if (!Array.isArray(allStocks)) {
+        this.logger.error('getSelectedStocks returned non-array result');
+        return { stocks: [], total: 0 };
+      }
+      
+      const total = allStocks.length;
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedStocks = allStocks.slice(startIndex, endIndex);
+      
+      return { stocks: paginatedStocks, total };
+    } catch (error) {
+      this.logger.error('Error in getSelectedStocks:', error);
+      throw error;
+    }
   }
 
   async getScanHistory(_page: number = 1, limit: number = 10): Promise<{ scans: any[], total: number }> {
@@ -242,7 +416,8 @@ export class ScanService extends BaseService {
   }
 
   async getRejectedStocksFromLatestScan(page: number = 1, limit: number = 10): Promise<{ stocks: any[], total: number }> {
-    const allStocks = await this.stockRepository.getStocksFromLatestScan();
+    // Get all stocks (not just latest scan) to allow grouping by date
+    const allStocks = await this.stockRepository.getAllStocksWithAnalysis();
     
     // Filter for rejected stocks (qualified = false)
     const rejectedStocks = allStocks.filter((stock: any) => !stock.qualified);

@@ -23,7 +23,10 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Divider
+  Divider,
+  Pagination,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import {
   TrendingUp,
@@ -59,25 +62,33 @@ interface SelectedStocksProps {
 }
 
 const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const [stocks, setStocks] = useState<SelectedStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedStock, setSelectedStock] = useState<SelectedStock | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalStocks, setTotalStocks] = useState(0);
 
   useEffect(() => {
     fetchSelectedStocks();
-  }, []);
+  }, [page]);
 
   const fetchSelectedStocks = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await fetchData('/selected');
+      const response = await fetchData(`/selected?page=${page}&limit=10`);
       
       if (response.success) {
         setStocks(response.data || []);
+        setTotalPages(response.pagination?.totalPages || 1);
+        setTotalStocks(response.pagination?.total || 0);
       } else {
         setError('Failed to fetch selected stocks');
         setSnack({ open: true, msg: 'Failed to fetch selected stocks', severity: 'error' });
@@ -91,12 +102,34 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
     }
   };
 
+  // Group stocks by scan date
+  const groupStocksByDate = (stocks: SelectedStock[]) => {
+    const grouped: Record<string, SelectedStock[]> = {};
+    stocks.forEach(stock => {
+      const dateKey = stock.scan_date ? new Date(stock.scan_date).toLocaleDateString() : 'Unknown Date';
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(stock);
+    });
+    return grouped;
+  };
+
+  const groupedStocks = groupStocksByDate(stocks);
+  const sortedDates = Object.keys(groupedStocks).sort((a, b) => {
+    const dateA = stocks.find(s => new Date(s.scan_date).toLocaleDateString() === a)?.scan_date;
+    const dateB = stocks.find(s => new Date(s.scan_date).toLocaleDateString() === b)?.scan_date;
+    if (!dateA || !dateB) return 0;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
+  });
+
   const formatPrice = (price: number | null | undefined) => {
     if (price === null || price === undefined || isNaN(price)) return '₹0.00';
     return `₹${Number(price).toFixed(2)}`;
   };
 
   const calculatePnL = (current: number, entry: number) => {
+    if (!entry || entry === 0) return 0;
     return ((current - entry) / entry) * 100;
   };
 
@@ -126,117 +159,36 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
+    <Box sx={{ p: { xs: 2, sm: 3 }, width: '100%', overflowX: 'hidden' }}>
+      <Box sx={{ mb: { xs: 2, sm: 3 } }}>
+        <Typography variant={isMobile ? 'h5' : 'h4'} component="h1" gutterBottom>
           Selected Stocks
         </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant={isMobile ? 'body2' : 'body1'} color="text.secondary" sx={{ mb: 2 }}>
           Stocks that passed the analysis and are ready for trading
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexWrap: 'wrap',
+          gap: { xs: 1, sm: 2 }, 
+          mb: 2 
+        }}>
           <Chip 
-            label={`Total: ${stocks.length}`} 
+            label={`Total: ${totalStocks}`} 
             color="primary" 
-            variant="outlined" 
+            variant="outlined"
+            size={isMobile ? 'small' : 'medium'}
           />
           <Chip 
-            label={`Total Value: ₹${stocks.reduce((sum, stock) => sum + stock.position_value, 0).toLocaleString()}`} 
-            color="success" 
-            variant="outlined" 
+            label={`Page: ${page} of ${totalPages}`} 
+            color="secondary" 
+            variant="outlined"
+            size={isMobile ? 'small' : 'medium'}
           />
         </Box>
       </Box>
 
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-        {stocks.map((stock) => {
-          const pnl = calculatePnL(stock.current_price, stock.entry_price);
-          return (
-            <Box sx={{ flex: '1 1 300px', minWidth: '300px' }} key={stock.symbol}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <CardContent sx={{ flexGrow: 1 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                    <Box>
-                      <Typography variant="h6" fontWeight="bold">
-                        {stock.symbol}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {stock.name}
-                      </Typography>
-                    </Box>
-                    <Chip
-                      label={pnl >= 0 ? `+${Number(pnl).toFixed(2)}%` : `${Number(pnl).toFixed(2)}%`}
-                      color={getPnLColor(pnl)}
-                      size="small"
-                    />
-                  </Box>
-
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Entry Price
-                    </Typography>
-                    <Typography variant="h6" fontWeight="bold">
-                      {formatPrice(stock.entry_price)}
-                    </Typography>
-                  </Box>
-
-                  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Stop Loss
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold" color="error.main">
-                        {formatPrice(stock.stop_loss)}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Current Price
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold">
-                        {formatPrice(stock.current_price)}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="caption" color="text.secondary" gutterBottom>
-                      Targets
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                      <Chip label={`T1: ${formatPrice(stock.target_1)}`} size="small" color="success" variant="outlined" />
-                      <Chip label={`T2: ${formatPrice(stock.target_2)}`} size="small" color="info" variant="outlined" />
-                      <Chip label={`T3: ${formatPrice(stock.target_3)}`} size="small" color="warning" variant="outlined" />
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Position Size
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold">
-                        {stock.position_size} shares
-                      </Typography>
-                    </Box>
-                    <Tooltip title="View Details">
-                      <IconButton 
-                        size="small" 
-                        color="primary"
-                        onClick={() => handleViewDetails(stock)}
-                      >
-                        <Visibility />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Box>
-          );
-        })}
-      </Box>
-
-      {stocks.length === 0 && (
+      {sortedDates.length === 0 && stocks.length === 0 && (
         <Box sx={{ textAlign: 'center', py: 4 }}>
           <Typography variant="h6" color="text.secondary">
             No selected stocks found
@@ -244,6 +196,127 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
           <Typography variant="body2" color="text.secondary">
             Run a scan to find qualified stocks
           </Typography>
+        </Box>
+      )}
+
+      {sortedDates.map((dateKey) => (
+        <Box key={dateKey} sx={{ mb: { xs: 3, sm: 4 } }}>
+          <Box sx={{ mb: { xs: 1.5, sm: 2 }, pb: 1, borderBottom: '2px solid', borderColor: 'divider' }}>
+            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" gutterBottom>
+              {dateKey}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {groupedStocks[dateKey].length} stock{groupedStocks[dateKey].length !== 1 ? 's' : ''} selected
+            </Typography>
+          </Box>
+          <Box sx={{ 
+            display: 'grid',
+            gridTemplateColumns: { 
+              xs: '1fr', 
+              sm: 'repeat(2, 1fr)', 
+              md: 'repeat(3, 1fr)',
+              lg: 'repeat(4, 1fr)' 
+            },
+            gap: { xs: 2, sm: 3 }
+          }}>
+            {groupedStocks[dateKey].map((stock) => {
+              const pnl = calculatePnL(stock.current_price, stock.entry_price);
+              return (
+                <Box key={`${dateKey}-${stock.symbol}`}>
+                  <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                    <CardContent sx={{ flexGrow: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                        <Box>
+                          <Typography variant="h6" fontWeight="bold">
+                            {stock.symbol}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {stock.name}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          label={pnl >= 0 ? `+${Number(pnl).toFixed(2)}%` : `${Number(pnl).toFixed(2)}%`}
+                          color={getPnLColor(pnl)}
+                          size="small"
+                        />
+                      </Box>
+
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Entry Price
+                        </Typography>
+                        <Typography variant="h6" fontWeight="bold">
+                          {formatPrice(stock.entry_price)}
+                        </Typography>
+                      </Box>
+
+                      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Stop Loss
+                          </Typography>
+                          <Typography variant="body2" fontWeight="bold" color="error.main">
+                            {formatPrice(stock.stop_loss)}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Current Price
+                          </Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            {formatPrice(stock.current_price)}
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary" gutterBottom>
+                          Targets
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Chip label={`T1: ${formatPrice(stock.target_1)}`} size="small" color="success" variant="outlined" />
+                          <Chip label={`T2: ${formatPrice(stock.target_2)}`} size="small" color="info" variant="outlined" />
+                          <Chip label={`T3: ${formatPrice(stock.target_3)}`} size="small" color="warning" variant="outlined" />
+                        </Box>
+                      </Box>
+
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">
+                            Position Size
+                          </Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            {stock.position_size} shares
+                          </Typography>
+                        </Box>
+                        <Tooltip title="View Details">
+                          <IconButton 
+                            size="small" 
+                            color="primary"
+                            onClick={() => handleViewDetails(stock)}
+                          >
+                            <Visibility />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Box>
+              );
+            })}
+          </Box>
+        </Box>
+      ))}
+
+      {totalPages > 1 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+          <Pagination
+            count={totalPages}
+            page={page}
+            onChange={(_, newPage) => setPage(newPage)}
+            color="primary"
+            size="large"
+          />
         </Box>
       )}
 

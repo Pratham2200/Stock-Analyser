@@ -250,6 +250,31 @@ body {
   }
 }
 
+/* Enhanced mobile responsiveness */
+@media (max-width: 600px) {
+  /* Ensure tables are scrollable on mobile */
+  .MuiTableContainer-root {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Reduce padding on mobile */
+  .MuiCardContent-root {
+    padding: 16px !important;
+  }
+  
+  /* Better touch targets */
+  .MuiButton-root {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  .MuiIconButton-root {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* Print styles */
 @media print {
   .no-print {

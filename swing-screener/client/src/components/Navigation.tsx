@@ -62,7 +62,8 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <Dashboard />, color: 'primary' },
-    { id: 'scan', label: 'Run Scan', icon: <Search />, color: 'warning' },
+    // Commented out scan page - scans can be run from dashboard
+    // { id: 'scan', label: 'Run Scan', icon: <Search />, color: 'warning' },
     { id: 'scanned', label: 'All Scanner Stocks', icon: <TableChart />, color: 'secondary' },
     { id: 'selected', label: 'Selected Stocks', icon: <TrendingUp />, color: 'success' },
     { id: 'rejected', label: 'Rejected Stocks', icon: <TrendingDown />, color: 'error' }

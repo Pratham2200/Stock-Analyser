@@ -104,12 +104,17 @@ export class SwingStrategyService {
   // ============================================================================
   // RULE 1: CONSOLIDATION PHASE
   // ============================================================================
+  // Transcript Requirements:
+  // - Consolidation period: 60 days
+  // - Stock should not move more than 30% from base during consolidation
+  // - Price consolidates below 10 EMA (sometimes 20 EMA, but 10 EMA is primary)
+  // - Identifies zones where price is below 10 EMA within 60-day window
 
   private checkConsolidationPhase(
     closes: number[],
     dates: string[],
-    percentThreshold: number = 30,
-    daysWindow: number = 60
+    percentThreshold: number = 30, // Transcript: "not move more than 30% from base"
+    daysWindow: number = 60 // Transcript: "Consolidation 60 days"
   ): ConsolidationResult {
     this.logger.info('🔍 RULE 1: Starting Consolidation Phase Check');
 
@@ -186,7 +191,8 @@ export class SwingStrategyService {
           this.logger.info(`📍 Zone found: bars ${zoneStart}-${zoneEnd}, low: ${zoneLow.toFixed(2)}`);
 
           // Update base if lower
-          if (consolidationBase === null || zoneLow < basePrice!) {
+          // Transcript: Track lowest zone low as base price for 30% threshold check
+          if (basePrice === null || zoneLow < basePrice) {
             const oldBase = basePrice;
             consolidationBase = zoneStart;
             basePrice = zoneLow;
@@ -250,11 +256,19 @@ export class SwingStrategyService {
   // ============================================================================
   // RULE 2: HIGHER LOW STRUCTURE
   // ============================================================================
+  // Transcript Requirements:
+  // - Chart must make "higher lows"
+  // - Uses 10 EMA to identify higher lows
+  // - Structure should not be broken (price above structure)
+  // - Single zone: Current price must be above zone low
+  // - Multiple zones: Latest zone low must be ≥ previous zone low
+  // NOTE: Currently using original logic (only last 2 zones)
+  // Enhanced logic (sequential check of all zones) is commented out below
 
   private checkHigherLowStructure(
     closes: number[],
     dates: string[],
-    daysWindow: number = 60
+    daysWindow: number = 60 // Uses same 60-day window as consolidation
   ): HigherLowResult {
     this.logger.info('🔍 RULE 2: Starting Higher Low Structure Check');
 
@@ -378,6 +392,47 @@ export class SwingStrategyService {
     }
 
     // Multiple zones scenario
+    // NEW LOGIC: Check ALL zones sequentially to ensure proper higher low structure
+    // Each zone low must be >= previous zone low (equal lows are acceptable)
+    // COMMENTED OUT - Reverted to original logic (only check last 2 zones)
+    /*
+    for (let i = 1; i < zones.length; i++) {
+      const prevZone = zones[i - 1];
+      const currentZone = zones[i];
+      
+      this.logger.info(`📊 Comparing zones ${i} and ${i + 1} for higher low structure`, {
+        prevZoneLow: prevZone.low.toFixed(2),
+        currentZoneLow: currentZone.low.toFixed(2)
+      });
+      
+      // Equal lows are acceptable (>= condition)
+      if (currentZone.low < prevZone.low) {
+        this.logger.error(`❌ RULE 2 FAILED: No higher low structure - zone ${i + 1} lower than zone ${i}`, {
+          prevZoneLow: prevZone.low.toFixed(2),
+          currentZoneLow: currentZone.low.toFixed(2),
+          zoneIndex: i + 1
+        });
+        return {
+          pass: false,
+          status: '❌ NO',
+          reason: `Zone ${i + 1} low ${currentZone.low.toFixed(2)} below zone ${i} low ${prevZone.low.toFixed(2)} - higher low structure broken (equal or higher required)`,
+          zones: zones
+        };
+      }
+    }
+    
+    // All zones passed sequential check
+    const prevZone = zones[zones.length - 2];
+    const lastZone = zones[zones.length - 1];
+    
+    this.logger.info(`✅ All zones passed sequential higher low check`, {
+      totalZones: zones.length,
+      prevZoneLow: prevZone.low.toFixed(2),
+      lastZoneLow: lastZone.low.toFixed(2)
+    });
+    */
+    
+    // ORIGINAL LOGIC: Only check last two zones (restored)
     const prevZone = zones[zones.length - 2];
     const lastZone = zones[zones.length - 1];
 
@@ -386,6 +441,8 @@ export class SwingStrategyService {
       lastZoneLow: lastZone.low.toFixed(2)
     });
 
+    // Check if last zone is greater than or equal to previous zone
+    // Equal lows are acceptable (consolidation at same level)
     if (lastZone.low < prevZone.low) {
       this.logger.error(`❌ RULE 2 FAILED: No higher low structure`, {
         lastZoneLow: lastZone.low.toFixed(2),
@@ -394,7 +451,7 @@ export class SwingStrategyService {
       return {
         pass: false,
         status: '❌ NO',
-        reason: `Latest zone low ${lastZone.low.toFixed(2)} below previous ${prevZone.low.toFixed(2)} - no higher low`,
+        reason: `Latest zone low ${lastZone.low.toFixed(2)} below previous ${prevZone.low.toFixed(2)} - no higher low (equal or higher required)`,
         zones: zones
       };
     }
@@ -416,16 +473,25 @@ export class SwingStrategyService {
       };
     }
 
+    // Check if zones are equal or higher
+    const isEqual = Math.abs(lastZone.low - prevZone.low) < 3.00; // Consider equal if within 3.00
+    const isHigher = lastZone.low > prevZone.low;
+    
     this.logger.success(`✅ RULE 2 PASSED: Higher low structure confirmed`, {
       prevZoneLow: prevZone.low.toFixed(2),
       lastZoneLow: lastZone.low.toFixed(2),
-      currentPrice: currentClose.toFixed(2)
+      currentPrice: currentClose.toFixed(2),
+      relationship: isEqual ? 'equal' : isHigher ? 'higher' : 'equal/higher'
     });
+
+    const relationshipText = isEqual 
+      ? `Equal low structure: ${lastZone.low.toFixed(2)} = ${prevZone.low.toFixed(2)}`
+      : `Higher low structure: ${lastZone.low.toFixed(2)} > ${prevZone.low.toFixed(2)}`;
 
     return {
       pass: true,
       status: '✅ YES',
-      reason: `Higher low structure: ${lastZone.low.toFixed(2)} ≥ ${prevZone.low.toFixed(2)}, price above structure`,
+      reason: `${relationshipText}, price above structure`,
       zones: zones,
       scenario: 'multi-zone'
     };
@@ -434,18 +500,26 @@ export class SwingStrategyService {
   // ============================================================================
   // RULE 3: VOLUME PUMP
   // ============================================================================
+  // Transcript Requirements:
+  // - Volume pump in "last 20 to 25 candles/sessions"
+  // - Volume pump indicates renewed interest/positive sentiment
+  // - Happens within the consolidation period
+  // - Significant volume increase (1.8x average used as threshold)
+  // - After last volume pump, check for selling candles (volume >2x avg)
+  // - If selling pump found, must have buying volume pump after it, otherwise reject
 
   private checkVolumePump(
-    volumes: number[],
-    window: number = 20,
-    avgPeriod: number = 20,
-    multiplier: number = 1.8
+    dailyBars: DailyBar[],
+    window: number = 25, // Transcript: "last 20 to 25 candles" - using maximum (25) for best coverage
+    avgPeriod: number = 20, // Standard 20-period average for comparison
+    multiplier: number = 1.8, // Threshold for significant volume pump (reasonable default)
+    sellingMultiplier: number = 2.0 // Threshold for selling volume pump
   ): VolumePumpResult {
     this.logger.info('🔍 RULE 3: Starting Volume Pump Check');
 
-    if (!volumes || volumes.length < avgPeriod + 5) {
+    if (!dailyBars || dailyBars.length < avgPeriod + 5) {
       this.logger.error('❌ RULE 3 FAILED: Insufficient volume data', {
-        volumeLength: volumes?.length,
+        barsLength: dailyBars?.length,
         required: avgPeriod + 5
       });
       return {
@@ -456,17 +530,30 @@ export class SwingStrategyService {
       };
     }
 
+    const volumes = dailyBars.map(bar => bar.volume);
     const spikes: VolumePumpResult['spikes'] = [];
+    const buyingSpikes: Array<{ index: number; volume: number; average: number; multiple: string; barsAgo: number }> = [];
+    const sellingSpikes: Array<{ index: number; volume: number; average: number; multiple: string; barsAgo: number }> = [];
     const startIdx = Math.max(avgPeriod, volumes.length - window);
 
-    this.logger.info(`📊 Scanning last ${window} bars for volume spikes (${multiplier}x threshold)`);
+    this.logger.info(`📊 Scanning last ${window} bars for volume spikes (${multiplier}x threshold)`, {
+      window: window,
+      avgPeriod: avgPeriod,
+      multiplier: multiplier,
+      transcriptMatch: '20-25 candles (using 25 for maximum coverage)'
+    });
 
+    // Find all volume pumps (buying and selling)
     for (let i = startIdx; i < volumes.length; i++) {
       const avgVol = volumes
         .slice(Math.max(0, i - avgPeriod), i)
         .reduce((sum, vol) => sum + vol, 0) / avgPeriod;
 
       if (avgVol > 0 && volumes[i] >= multiplier * avgVol) {
+        const bar = dailyBars[i];
+        const isBuyingCandle = bar.close > bar.open; // Green/up candle = buying
+        const isSellingCandle = bar.close < bar.open; // Red/down candle = selling
+        
         const spike = {
           index: i,
           volume: volumes[i],
@@ -474,45 +561,172 @@ export class SwingStrategyService {
           multiple: (volumes[i] / avgVol).toFixed(2),
           barsAgo: volumes.length - 1 - i
         };
+        
         spikes.push(spike);
-        this.logger.info(`📈 Volume spike detected at index ${i}`, spike);
+        
+        if (isBuyingCandle) {
+          buyingSpikes.push(spike);
+          this.logger.info(`📈 Buying volume spike detected at index ${i}`, spike);
+        } else if (isSellingCandle) {
+          sellingSpikes.push(spike);
+          this.logger.info(`📉 Selling volume spike detected at index ${i}`, spike);
+        } else {
+          // Doji/neutral candle - treat as buying for now
+          buyingSpikes.push(spike);
+          this.logger.info(`📊 Neutral volume spike detected at index ${i} (treated as buying)`, spike);
+        }
       }
     }
 
-    if (spikes.length > 0) {
-      const firstSpike = spikes[0];
-      this.logger.success(`✅ RULE 3 PASSED: Volume spike(s) found`, {
+    // Must have at least one volume pump to proceed
+    if (spikes.length === 0) {
+      this.logger.error(`❌ RULE 3 FAILED: No volume spikes found`, {
+        multiplier: multiplier,
+        barsScanned: window
+      });
+      return {
+        pass: false,
+        status: '❌ NO',
+        reason: `No volume spikes ≥${multiplier}x average in last ${window} bars`,
+        spikes: []
+      };
+    }
+
+    // Find the last volume pump (most recent) WITHIN the 25-day window
+    const lastVolumePump = spikes[spikes.length - 1];
+    const lastPumpIndex = lastVolumePump.index;
+
+    // Ensure we only look within the last 25 bars window
+    const windowEndIndex = volumes.length - 1;
+    const windowStartIndex = Math.max(0, volumes.length - window);
+    
+    this.logger.info(`📍 Last volume pump found at index ${lastPumpIndex} (${lastVolumePump.barsAgo} bars ago)`, {
+      windowStartIndex: windowStartIndex,
+      windowEndIndex: windowEndIndex,
+      windowSize: window
+    });
+
+    // Check for selling candles with volume > 2x average AFTER the last volume pump
+    // BUT only within the 25-day window (from windowStartIndex to windowEndIndex)
+    let sellingPumpFound = false;
+    let sellingPumpIndex = -1;
+    
+    // Only check after last pump AND within the 25-day window
+    const checkStartIndex = Math.max(lastPumpIndex + 1, windowStartIndex);
+    const checkEndIndex = windowEndIndex;
+    
+    for (let i = checkStartIndex; i <= checkEndIndex; i++) {
+      const avgVol = volumes
+        .slice(Math.max(0, i - avgPeriod), i)
+        .reduce((sum, vol) => sum + vol, 0) / avgPeriod;
+      
+      const bar = dailyBars[i];
+      const isSellingCandle = bar.close < bar.open;
+      
+      if (avgVol > 0 && isSellingCandle && volumes[i] >= sellingMultiplier * avgVol) {
+        sellingPumpFound = true;
+        sellingPumpIndex = i;
+        this.logger.warn(`⚠️ Selling volume pump detected after last volume pump (within 25-day window)`, {
+          index: i,
+          volume: volumes[i],
+          average: avgVol,
+          multiple: (volumes[i] / avgVol).toFixed(2),
+          barsAgo: volumes.length - 1 - i
+        });
+        break; // Found first selling pump, stop searching
+      }
+    }
+
+    // If no selling pump after last volume pump (within window), stock qualifies
+    if (!sellingPumpFound) {
+      this.logger.success(`✅ RULE 3 PASSED: No selling pump after last volume pump (within 25-day window)`, {
         spikeCount: spikes.length,
-        firstSpike: firstSpike
+        lastPump: lastVolumePump,
+        checkedUpToBar: checkEndIndex
       });
       return {
         pass: true,
         status: '✅ YES',
-        reason: `Volume spike found: ${firstSpike.multiple}x average (${firstSpike.barsAgo} bars ago)`,
+        reason: `Volume spike found: ${lastVolumePump.multiple}x average (${lastVolumePump.barsAgo} bars ago), no selling pump after within 25-day window`,
         spikes: spikes
       };
     }
 
-    this.logger.error(`❌ RULE 3 FAILED: No volume spikes found`, {
-      multiplier: multiplier,
-      barsScanned: window
+    // Selling pump found - must have buying volume pump AFTER the selling pump
+    // BUT only within the 25-day window
+    this.logger.info(`🔍 Selling pump found. Checking for buying volume pump after selling pump (within 25-day window)...`, {
+      sellingPumpIndex: sellingPumpIndex,
+      barsAgo: volumes.length - 1 - sellingPumpIndex,
+      windowEndIndex: windowEndIndex
     });
 
-    return {
-      pass: false,
-      status: '❌ NO',
-      reason: `No volume spikes ≥${multiplier}x average in last ${window} bars`,
-      spikes: []
-    };
+    let buyingPumpAfterSelling = false;
+    let buyingPumpAfterSellingIndex = -1;
+
+    // Only check after selling pump AND within the 25-day window
+    const buyingCheckStartIndex = Math.max(sellingPumpIndex + 1, windowStartIndex);
+    const buyingCheckEndIndex = windowEndIndex;
+
+    for (let i = buyingCheckStartIndex; i <= buyingCheckEndIndex; i++) {
+      const avgVol = volumes
+        .slice(Math.max(0, i - avgPeriod), i)
+        .reduce((sum, vol) => sum + vol, 0) / avgPeriod;
+      
+      const bar = dailyBars[i];
+      const isBuyingCandle = bar.close > bar.open;
+      
+      if (avgVol > 0 && isBuyingCandle && volumes[i] >= multiplier * avgVol) {
+        buyingPumpAfterSelling = true;
+        buyingPumpAfterSellingIndex = i;
+        this.logger.success(`✅ Buying volume pump found after selling pump (within 25-day window)`, {
+          index: i,
+          volume: volumes[i],
+          average: avgVol,
+          multiple: (volumes[i] / avgVol).toFixed(2),
+          barsAgo: volumes.length - 1 - i
+        });
+        break; // Found buying pump, stop searching
+      }
+    }
+
+    if (buyingPumpAfterSelling) {
+      this.logger.success(`✅ RULE 3 PASSED: Buying volume pump found after selling pump`, {
+        spikeCount: spikes.length,
+        sellingPumpIndex: sellingPumpIndex,
+        buyingPumpAfterSellingIndex: buyingPumpAfterSellingIndex
+      });
+      return {
+        pass: true,
+        status: '✅ YES',
+        reason: `Volume pump found. Selling pump at ${volumes.length - 1 - sellingPumpIndex} bars ago, but buying pump found after`,
+        spikes: spikes
+      };
+    } else {
+      this.logger.error(`❌ RULE 3 FAILED: No buying volume pump after selling pump`, {
+        sellingPumpIndex: sellingPumpIndex,
+        barsAfterSelling: volumes.length - 1 - sellingPumpIndex
+      });
+      return {
+        pass: false,
+        status: '❌ NO',
+        reason: `Selling volume pump found after last volume pump (${volumes.length - 1 - sellingPumpIndex} bars ago), but no buying pump after selling`,
+        spikes: spikes
+      };
+    }
   }
 
   // ============================================================================
   // RULE 4: BEAR SQUEEZE CANDLE
   // ============================================================================
+  // Transcript Requirements:
+  // - Need a bear squeeze candle (latest/most recent candle)
+  // - Bear squeeze candle has a large lower wick
+  // - Lower wick should be 40% or more of the total candle range
+  // - Shows rejection of lower prices (bears squeezed out)
 
   private checkBearSqueezeCandle(
     dailyBars: DailyBar[],
-    wickThreshold: number = 40
+    wickThreshold: number = 40 // Transcript: "40% or more" of total candle range
   ): BearSqueezeResult {
     this.logger.info('🔍 RULE 4: Starting Bear Squeeze Candle Check');
 
@@ -685,8 +899,8 @@ export class SwingStrategyService {
     }
     score++;
 
-    // RULE 3: Volume Pump
-    const volumePump = this.checkVolumePump(volumes);
+    // RULE 3: Volume Pump (needs dailyBars to check buying vs selling candles)
+    const volumePump = this.checkVolumePump(dailyBars);
     details.volumePump = volumePump;
 
     if (!volumePump.pass) {

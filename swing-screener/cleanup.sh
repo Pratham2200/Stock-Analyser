@@ -28,3 +28,4 @@ echo "✅ All processes killed"
 echo "🎯 Ready to start fresh!"
 echo ""
 echo "Now run: ./start.sh"
+
