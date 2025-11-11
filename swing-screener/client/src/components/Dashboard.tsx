@@ -30,7 +30,9 @@ import {
   ListItem,
   ListItemAvatar,
   ListItemText,
-  Divider
+  Divider,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import {
   Refresh,
@@ -91,6 +93,9 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -114,9 +119,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
         api.get('/performance')
       ]);
 
-      const status = statusResponse.data;
-      const scanResults = scanResultsResponse.data;
-      const performance = performanceResponse.data;
+      // Handle response format - API returns { success: true, data: {...} }
+      const status = statusResponse.data?.data || statusResponse.data;
+      const scanResults = scanResultsResponse.data?.data || scanResultsResponse.data;
+      const performance = performanceResponse.data?.data || performanceResponse.data;
 
       setDashboardData({
         scanResults: {
@@ -210,24 +216,56 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
   }
 
   return (
-    <Box sx={{ p: 3, backgroundColor: 'background.default', minHeight: '100vh' }}>
+    <Box sx={{ 
+      p: { xs: 2, sm: 3 }, 
+      backgroundColor: 'background.default', 
+      minHeight: '100vh',
+      width: '100%',
+      overflowX: 'hidden'
+    }}>
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-        <Box>
-          <Typography variant="h3" component="h1" fontWeight="bold" color="primary">
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between', 
+          alignItems: { xs: 'flex-start', sm: 'center' },
+          mb: { xs: 3, sm: 4 },
+          gap: { xs: 2, sm: 0 }
+        }}
+      >
+        <Box sx={{ width: { xs: '100%', sm: 'auto' } }}>
+          <Typography 
+            variant={isMobile ? 'h5' : 'h3'} 
+            component="h1" 
+            fontWeight="bold" 
+            color="primary"
+            sx={{ mb: { xs: 0.5, sm: 0 } }}
+          >
             Stock Analysis Dashboard
           </Typography>
-          <Typography variant="subtitle1" color="text.secondary">
+          <Typography 
+            variant={isMobile ? 'body2' : 'subtitle1'} 
+            color="text.secondary"
+          >
             Real-time market analysis and stock screening
           </Typography>
         </Box>
-        <Box display="flex" gap={2}>
+        <Box 
+          sx={{ 
+            display: 'flex', 
+            gap: 2,
+            width: { xs: '100%', sm: 'auto' },
+            flexDirection: { xs: 'column', sm: 'row' }
+          }}
+        >
           <Button
             variant="outlined"
             startIcon={<Refresh />}
             onClick={handleRefresh}
             disabled={refreshing}
-            sx={{ borderRadius: 2 }}
+            sx={{ borderRadius: 2, width: { xs: '100%', sm: 'auto' } }}
+            size={isMobile ? 'medium' : 'large'}
           >
             {refreshing ? <CircularProgress size={20} /> : 'Refresh'}
           </Button>
@@ -236,7 +274,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
             startIcon={<Assessment />}
             onClick={startScan}
             disabled={scanning}
-            sx={{ borderRadius: 2 }}
+            sx={{ borderRadius: 2, width: { xs: '100%', sm: 'auto' } }}
+            size={isMobile ? 'medium' : 'large'}
           >
             {scanning ? 'Scanning...' : 'Start Scan'}
           </Button>
@@ -264,9 +303,19 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
       )}
 
       {/* Main Stats Cards */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 4 }}>
+      <Box sx={{ 
+        display: 'grid',
+        gridTemplateColumns: { 
+          xs: '1fr', 
+          sm: 'repeat(2, 1fr)', 
+          md: 'repeat(2, 1fr)',
+          lg: 'repeat(4, 1fr)' 
+        },
+        gap: { xs: 2, sm: 3 },
+        mb: { xs: 3, sm: 4 }
+      }}>
         {/* Today's Performance */}
-        <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
+        <Box>
           <Card sx={{ 
             background: dashboardData?.performance?.todayPnlPercent !== undefined && dashboardData.performance.todayPnlPercent >= 0 
               ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' 
@@ -279,10 +328,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                 <Timeline sx={{ mr: 1, fontSize: 28 }} />
                 <Typography variant="h6" fontWeight="bold">Today's P&L</Typography>
               </Box>
-              <Typography variant="h3" fontWeight="bold" mb={1}>
+              <Typography variant={isMobile ? 'h5' : 'h3'} fontWeight="bold" mb={1}>
                 ₹{dashboardData?.performance?.todayPnl?.toLocaleString() || '0'}
               </Typography>
-              <Typography variant="h6">
+              <Typography variant={isMobile ? 'body1' : 'h6'}>
                 {dashboardData?.performance?.todayPnlPercent !== undefined && dashboardData.performance.todayPnlPercent >= 0 ? '+' : ''}{dashboardData?.performance?.todayPnlPercent?.toFixed(2) || '0'}%
               </Typography>
             </CardContent>
@@ -290,7 +339,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
         </Box>
 
         {/* Scan Results */}
-        <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
+        <Box>
           <Card sx={{ 
             background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
             height: '100%'
@@ -300,7 +349,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                 <Assessment sx={{ mr: 1, fontSize: 28, color: 'primary.main' }} />
                 <Typography variant="h6" fontWeight="bold" color="primary">Scan Results</Typography>
               </Box>
-              <Typography variant="h3" fontWeight="bold" color="primary" mb={1}>
+              <Typography variant={isMobile ? 'h5' : 'h3'} fontWeight="bold" color="primary" mb={1}>
                 {dashboardData?.scanResults?.qualifiedStocks || 0}
               </Typography>
               <Typography variant="body1" color="text.secondary">
@@ -314,7 +363,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
         </Box>
 
         {/* Success Rate */}
-        <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
+        <Box>
           <Card sx={{ 
             background: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
             height: '100%'
@@ -324,7 +373,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                 <Analytics sx={{ mr: 1, fontSize: 28, color: 'warning.main' }} />
                 <Typography variant="h6" fontWeight="bold" color="warning.main">Success Rate</Typography>
               </Box>
-              <Typography variant="h3" fontWeight="bold" color="warning.main" mb={1}>
+              <Typography variant={isMobile ? 'h5' : 'h3'} fontWeight="bold" color="warning.main" mb={1}>
                 {dashboardData?.scanResults?.successRate || 0}%
               </Typography>
               <Typography variant="body1" color="text.secondary">
@@ -335,7 +384,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
         </Box>
 
         {/* Weekly Performance */}
-        <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
+        <Box>
           <Card sx={{ 
             background: dashboardData?.performance?.weekPnlPercent && dashboardData.performance.weekPnlPercent >= 0 
               ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
@@ -350,7 +399,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                   Weekly Performance
                 </Typography>
               </Box>
-              <Typography variant="h4" fontWeight="bold">
+              <Typography variant={isMobile ? 'h5' : 'h4'} fontWeight="bold">
                 {dashboardData?.performance?.weekPnlPercent?.toFixed(2) || '0'}%
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -362,26 +411,36 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
       </Box>
 
       {/* Tabs for different views */}
-      <Card sx={{ mb: 4 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-            <Tab icon={<BarChart />} label="Analysis" />
-            <Tab icon={<Timeline />} label="Performance" />
-            <Tab icon={<Notifications />} label="Alerts" />
+      <Card sx={{ mb: { xs: 3, sm: 4 }, overflow: 'hidden' }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', overflowX: 'auto' }}>
+          <Tabs 
+            value={activeTab} 
+            onChange={(e, newValue) => setActiveTab(newValue)}
+            variant={isMobile ? 'scrollable' : 'standard'}
+            scrollButtons={isMobile ? 'auto' : false}
+            sx={{ minHeight: { xs: 48, sm: 72 } }}
+          >
+            <Tab icon={<BarChart />} label={isMobile ? "" : "Analysis"} iconPosition={isMobile ? "start" : "top"} />
+            <Tab icon={<Timeline />} label={isMobile ? "" : "Performance"} iconPosition={isMobile ? "start" : "top"} />
+            <Tab icon={<Notifications />} label={isMobile ? "" : "Alerts"} iconPosition={isMobile ? "start" : "top"} />
           </Tabs>
         </Box>
 
         {/* Analysis Tab */}
         {activeTab === 0 && (
-          <Box sx={{ p: 3 }}>
-            <Typography variant="h5" fontWeight="bold" mb={3}>Stock Analysis</Typography>
+          <Box sx={{ p: { xs: 2, sm: 3 } }}>
+            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" mb={3}>Stock Analysis</Typography>
             
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-              <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
-                <Card sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Box sx={{ 
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+              gap: { xs: 2, sm: 3 }
+            }}>
+              <Box>
+                <Card sx={{ height: { xs: 250, sm: 300 }, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Box textAlign="center">
-                    <BarChart sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
-                    <Typography variant="h6" fontWeight="bold" mb={1}>
+                    <BarChart sx={{ fontSize: { xs: 48, sm: 60 }, color: 'primary.main', mb: 2 }} />
+                    <Typography variant={isMobile ? 'body1' : 'h6'} fontWeight="bold" mb={1}>
                       Technical Analysis
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -390,11 +449,11 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                   </Box>
                 </Card>
               </Box>
-              <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
-                <Card sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Box>
+                <Card sx={{ height: { xs: 250, sm: 300 }, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Box textAlign="center">
-                    <PieChart sx={{ fontSize: 60, color: 'secondary.main', mb: 2 }} />
-                    <Typography variant="h6" fontWeight="bold" mb={1}>
+                    <PieChart sx={{ fontSize: { xs: 48, sm: 60 }, color: 'secondary.main', mb: 2 }} />
+                    <Typography variant={isMobile ? 'body1' : 'h6'} fontWeight="bold" mb={1}>
                       Sector Analysis
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -409,14 +468,18 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
 
         {/* Performance Tab */}
         {activeTab === 1 && (
-          <Box sx={{ p: 3 }}>
-            <Typography variant="h5" fontWeight="bold" mb={3}>Performance Metrics</Typography>
+          <Box sx={{ p: { xs: 2, sm: 3 } }}>
+            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" mb={3}>Performance Metrics</Typography>
             
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-              <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
-                <Card sx={{ p: 3, textAlign: 'center' }}>
-                  <ShowChart sx={{ fontSize: 40, color: 'primary.main', mb: 2 }} />
-                  <Typography variant="h4" fontWeight="bold" color="primary">
+            <Box sx={{ 
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+              gap: { xs: 2, sm: 3 }
+            }}>
+              <Box>
+                <Card sx={{ p: { xs: 2, sm: 3 }, textAlign: 'center' }}>
+                  <ShowChart sx={{ fontSize: { xs: 32, sm: 40 }, color: 'primary.main', mb: 2 }} />
+                  <Typography variant={isMobile ? 'h5' : 'h4'} fontWeight="bold" color="primary">
                     {dashboardData?.performance?.weekPnlPercent?.toFixed(2) || '0'}%
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -424,10 +487,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                   </Typography>
                 </Card>
               </Box>
-              <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
-                <Card sx={{ p: 3, textAlign: 'center' }}>
-                  <Timeline sx={{ fontSize: 40, color: 'success.main', mb: 2 }} />
-                  <Typography variant="h4" fontWeight="bold" color="success.main">
+              <Box>
+                <Card sx={{ p: { xs: 2, sm: 3 }, textAlign: 'center' }}>
+                  <Timeline sx={{ fontSize: { xs: 32, sm: 40 }, color: 'success.main', mb: 2 }} />
+                  <Typography variant={isMobile ? 'h5' : 'h4'} fontWeight="bold" color="success.main">
                     {dashboardData?.performance?.todayPnlPercent?.toFixed(2) || '0'}%
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -441,8 +504,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
 
         {/* Alerts Tab */}
         {activeTab === 2 && (
-          <Box sx={{ p: 3 }}>
-            <Typography variant="h5" fontWeight="bold" mb={3}>Market Alerts</Typography>
+          <Box sx={{ p: { xs: 2, sm: 3 } }}>
+            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" mb={3}>Market Alerts</Typography>
             <List>
               <ListItem>
                 <ListItemAvatar>

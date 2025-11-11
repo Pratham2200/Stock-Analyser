@@ -2,7 +2,6 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Snackbar, Alert, Box } from '@mui/material';
-import Home from './pages/Home';
 import Dashboard from './components/Dashboard';
 import ScannedStocks from './components/ScannedStocks';
 import SelectedStocks from './components/SelectedStocks';
@@ -20,27 +19,18 @@ function AppContent(): React.JSX.Element {
   const location = useLocation();
   
   // Get current page from URL path
-  const getCurrentPage = () => {
-    const path = location.pathname.substring(1); // Remove leading slash
-    return path || 'dashboard';
-  };
-  
-  const currentPage = getCurrentPage();
-  
-  const handleNavigate = (page: string) => {
-    // Navigation is handled by React Router
-    window.history.pushState({}, '', `/${page}`);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  };
+  const currentPage = location.pathname.substring(1) || 'dashboard';
   
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <Navigation currentPage={currentPage} onNavigate={handleNavigate} />
+      <Navigation currentPage={currentPage} onNavigate={() => {}} />
       <Box sx={{ flexGrow: 1 }}>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard setSnack={setSnack} />} />
-          <Route path="/scan" element={<Home setSnack={setSnack} />} />
+          {/* Commented out scan page - scans can be run from dashboard */}
+          {/* <Route path="/scan" element={<Home setSnack={setSnack} />} /> */}
+          <Route path="/scan" element={<Navigate to="/dashboard" replace />} />
           <Route path="/scanned" element={<ScannedStocks setSnack={setSnack} />} />
           <Route path="/selected" element={<SelectedStocks setSnack={setSnack} />} />
           <Route path="/rejected" element={<RejectedStocks setSnack={setSnack} />} />

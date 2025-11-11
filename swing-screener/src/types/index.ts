@@ -40,6 +40,9 @@ export interface AnalysisResult {
 export interface StockData {
   symbol: string;
   name: string;
+  currentPrice?: number;
+  marketCap?: number;
+  volume?: number;
 }
 
 export interface ScanResult {

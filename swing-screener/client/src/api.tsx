@@ -22,12 +22,42 @@ api.interceptors.response.use(
 );
 
 // Helper function for making API calls
-export const fetchData = async (url: string) => {
+export const fetchData = async (url: string, options?: { method?: string; headers?: any; body?: any }) => {
   try {
-    const response = await api.get(url);
+    let response;
+    if (options?.method === 'POST') {
+      // If body is a string, parse it; otherwise use as-is
+      const bodyData = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+      response = await api.post(url, bodyData, { 
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        }
+      });
+    } else {
+      response = await api.get(url);
+    }
     return response.data;
-  } catch (error) {
-    console.error('API Error:', error);
+  } catch (error: any) {
+    // Enhanced error logging
+    if (error.response) {
+      // Server responded with error status
+      console.error('API Error Response:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        url: url
+      });
+    } else if (error.request) {
+      // Request was made but no response received
+      console.error('API Error - No response:', {
+        url: url,
+        message: error.message
+      });
+    } else {
+      // Error setting up request
+      console.error('API Error - Request setup:', error.message);
+    }
     throw error;
   }
 };

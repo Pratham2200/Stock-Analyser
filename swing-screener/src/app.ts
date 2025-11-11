@@ -15,7 +15,7 @@ import { createDatabaseConnection } from './database/connection';
 import { ScanService } from './services/ScanService';
 import { StockAnalysisService } from './services/StockAnalysisService';
 import { ScraperService } from './services/ScraperService';
-import { NotificationService } from './services/NotificationService';
+import { StockDataService } from './services/StockDataService';
 
 // Repositories
 import { StockRepository } from './repositories/StockRepository';
@@ -71,7 +71,7 @@ export class App {
     // Security middleware
     this.app.use(helmet());
     this.app.use(cors({
-      origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+      origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173'],
       credentials: true
     }));
 
@@ -105,14 +105,14 @@ export class App {
     // Initialize services
     const stockAnalysisService = new StockAnalysisService();
     const scraperService = new ScraperService();
-    const notificationService = new NotificationService(this.config);
+    const stockDataService = new StockDataService();
 
     // Initialize scan service
     const scanService = new ScanService(
       stockRepository,
       stockAnalysisService,
       scraperService,
-      notificationService,
+      stockDataService,
       this.config
     );
 
@@ -120,8 +120,7 @@ export class App {
     this.app.locals.services = {
       scanService,
       stockAnalysisService,
-      scraperService,
-      notificationService
+      scraperService
     };
 
     this.app.locals.repositories = {
@@ -180,7 +179,7 @@ export class App {
       this.server = this.app.listen(port, () => {
         this.logger.info(`🚀 Server running on http://localhost:${port}`);
         this.logger.info(`📊 API available at http://localhost:${port}/api`);
-        this.logger.info(`🎯 Frontend available at http://localhost:${port}`);
+        this.logger.info(`🎯 Frontend available at http://localhost:5173`);
       });
 
       // Graceful shutdown

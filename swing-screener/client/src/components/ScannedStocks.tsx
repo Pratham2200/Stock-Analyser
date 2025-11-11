@@ -19,7 +19,9 @@ import {
   Pagination,
   Chip as MuiChip,
   Tooltip,
-  IconButton
+  IconButton,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import {
   TrendingUp,
@@ -41,6 +43,7 @@ interface ScannedStock {
   current_price: number;
   ema10: number;
   ema20: number;
+  scan_date: string;
   strategy_details: {
     overall: {
       grade: string;
@@ -90,6 +93,9 @@ interface ScannedStocksProps {
 }
 
 const ScannedStocks: React.FC<ScannedStocksProps> = ({ setSnack }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const [stocks, setStocks] = useState<ScannedStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -153,6 +159,27 @@ const ScannedStocks: React.FC<ScannedStocksProps> = ({ setSnack }) => {
     return `${(Number(value) * 100).toFixed(1)}%`;
   };
 
+  // Group stocks by scan date
+  const groupStocksByDate = (stocks: ScannedStock[]) => {
+    const grouped: Record<string, ScannedStock[]> = {};
+    stocks.forEach(stock => {
+      const dateKey = stock.scan_date ? new Date(stock.scan_date).toLocaleDateString() : 'Unknown Date';
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(stock);
+    });
+    return grouped;
+  };
+
+  const groupedStocks = groupStocksByDate(stocks);
+  const sortedDates = Object.keys(groupedStocks).sort((a, b) => {
+    const dateA = stocks.find(s => s.scan_date && new Date(s.scan_date).toLocaleDateString() === a)?.scan_date;
+    const dateB = stocks.find(s => s.scan_date && new Date(s.scan_date).toLocaleDateString() === b)?.scan_date;
+    if (!dateA || !dateB) return 0;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
+  });
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
@@ -170,137 +197,181 @@ const ScannedStocks: React.FC<ScannedStocksProps> = ({ setSnack }) => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
+    <Box sx={{ p: { xs: 2, sm: 3 }, width: '100%', overflowX: 'hidden' }}>
+      <Box sx={{ mb: { xs: 2, sm: 3 } }}>
+        <Typography variant={isMobile ? 'h5' : 'h4'} component="h1" gutterBottom>
           Scanned Stocks
         </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant={isMobile ? 'body2' : 'body1'} color="text.secondary" sx={{ mb: 2 }}>
           All stocks fetched from the scanner with detailed analysis
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexWrap: 'wrap',
+          gap: { xs: 1, sm: 2 }, 
+          mb: 2 
+        }}>
           <Chip 
             label={`Total: ${totalStocks}`} 
             color="primary" 
-            variant="outlined" 
+            variant="outlined"
+            size={isMobile ? 'small' : 'medium'}
           />
           <Chip 
             label={`Qualified: ${(stocks || []).filter(s => s.qualified).length}`} 
             color="success" 
-            variant="outlined" 
+            variant="outlined"
+            size={isMobile ? 'small' : 'medium'}
           />
           <Chip 
             label={`Rejected: ${(stocks || []).filter(s => !s.qualified).length}`} 
             color="error" 
-            variant="outlined" 
+            variant="outlined"
+            size={isMobile ? 'small' : 'medium'}
           />
         </Box>
       </Box>
 
-      <TableContainer component={Paper} sx={{ mb: 3 }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Stock</TableCell>
-              <TableCell>Price</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Grade</TableCell>
-              <TableCell>EMA</TableCell>
-              <TableCell>Analysis</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {(stocks || []).map((stock) => (
-              <TableRow key={stock.id} hover>
-                <TableCell>
-                  <Box>
-                    <Typography variant="subtitle2" fontWeight="bold">
-                      {stock.symbol}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {stock.name}
-                    </Typography>
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2" fontWeight="bold">
-                    {formatPrice(stock.current_price)}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    icon={getStatusIcon(stock.qualified)}
-                    label={stock.qualified ? 'Qualified' : 'Rejected'}
-                    color={getStatusColor(stock.qualified)}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={stock.strategy_details.overall.grade}
-                    color={getGradeColor(stock.strategy_details.overall.grade) as any}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>
-                  <Box>
-                    <Typography variant="caption" display="block">
-                      EMA10: {formatPrice(stock.ema10)}
-                    </Typography>
-                    <Typography variant="caption" display="block">
-                      EMA20: {formatPrice(stock.ema20)}
-                    </Typography>
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                    <Tooltip title={`Higher Low: ${stock.strategy_details.higherLow.status}`}>
+      {sortedDates.length === 0 && stocks.length === 0 && (
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <Typography variant="h6" color="text.secondary">
+            No stocks found
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Run a scan to analyze stocks
+          </Typography>
+        </Box>
+      )}
+
+      {sortedDates.map((dateKey) => (
+        <Box key={dateKey} sx={{ mb: { xs: 3, sm: 4 } }}>
+          <Box sx={{ mb: { xs: 1.5, sm: 2 }, pb: 1, borderBottom: '2px solid', borderColor: 'divider' }}>
+            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" gutterBottom>
+              {dateKey}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {groupedStocks[dateKey].length} stock{groupedStocks[dateKey].length !== 1 ? 's' : ''} scanned
+              {' '}(Qualified: {groupedStocks[dateKey].filter(s => s.qualified).length}, 
+              Rejected: {groupedStocks[dateKey].filter(s => !s.qualified).length})
+            </Typography>
+          </Box>
+          <TableContainer 
+            component={Paper} 
+            sx={{ 
+              mb: 3,
+              overflowX: 'auto',
+              maxWidth: '100%',
+              '& .MuiTableCell': {
+                fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                padding: { xs: '8px', sm: '16px' }
+              }
+            }}
+          >
+            <Table sx={{ minWidth: isMobile ? 800 : 'auto' }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Stock</TableCell>
+                  <TableCell>Price</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Grade</TableCell>
+                  <TableCell>EMA</TableCell>
+                  <TableCell>Analysis</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {groupedStocks[dateKey].map((stock) => (
+                  <TableRow key={`${dateKey}-${stock.id}`} hover>
+                    <TableCell>
+                      <Box>
+                        <Typography variant="subtitle2" fontWeight="bold">
+                          {stock.symbol}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {stock.name}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="bold">
+                        {formatPrice(stock.current_price)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
                       <Chip
-                        label="HL"
+                        icon={getStatusIcon(stock.qualified)}
+                        label={stock.qualified ? 'Qualified' : 'Rejected'}
+                        color={getStatusColor(stock.qualified)}
                         size="small"
-                        color={stock.strategy_details.higherLow.pass ? 'success' : 'error'}
-                        variant="outlined"
                       />
-                    </Tooltip>
-                    <Tooltip title={`Volume Pump: ${stock.strategy_details.volumePump.status}`}>
+                    </TableCell>
+                    <TableCell>
                       <Chip
-                        label="VP"
+                        label={stock.strategy_details.overall.grade}
+                        color={getGradeColor(stock.strategy_details.overall.grade) as any}
                         size="small"
-                        color={stock.strategy_details.volumePump.pass ? 'success' : 'error'}
-                        variant="outlined"
                       />
-                    </Tooltip>
-                    <Tooltip title={`Bear Squeeze: ${stock.strategy_details.bearSqueeze.status}`}>
-                      <Chip
-                        label="BS"
-                        size="small"
-                        color={stock.strategy_details.bearSqueeze.pass ? 'success' : 'error'}
-                        variant="outlined"
-                      />
-                    </Tooltip>
-                    <Tooltip title={`Consolidation: ${stock.strategy_details.consolidation.status}`}>
-                      <Chip
-                        label="C"
-                        size="small"
-                        color={stock.strategy_details.consolidation.pass ? 'success' : 'error'}
-                        variant="outlined"
-                      />
-                    </Tooltip>
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Tooltip title="View Details">
-                    <IconButton size="small" color="primary">
-                      <Visibility />
-                    </IconButton>
-                  </Tooltip>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                    </TableCell>
+                    <TableCell>
+                      <Box>
+                        <Typography variant="caption" display="block">
+                          EMA10: {formatPrice(stock.ema10)}
+                        </Typography>
+                        <Typography variant="caption" display="block">
+                          EMA20: {formatPrice(stock.ema20)}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        <Tooltip title={`Higher Low: ${stock.strategy_details.higherLow.status}`}>
+                          <Chip
+                            label="HL"
+                            size="small"
+                            color={stock.strategy_details.higherLow.pass ? 'success' : 'error'}
+                            variant="outlined"
+                          />
+                        </Tooltip>
+                        <Tooltip title={`Volume Pump: ${stock.strategy_details.volumePump.status}`}>
+                          <Chip
+                            label="VP"
+                            size="small"
+                            color={stock.strategy_details.volumePump.pass ? 'success' : 'error'}
+                            variant="outlined"
+                          />
+                        </Tooltip>
+                        <Tooltip title={`Bear Squeeze: ${stock.strategy_details.bearSqueeze.status}`}>
+                          <Chip
+                            label="BS"
+                            size="small"
+                            color={stock.strategy_details.bearSqueeze.pass ? 'success' : 'error'}
+                            variant="outlined"
+                          />
+                        </Tooltip>
+                        <Tooltip title={`Consolidation: ${stock.strategy_details.consolidation.status}`}>
+                          <Chip
+                            label="C"
+                            size="small"
+                            color={stock.strategy_details.consolidation.pass ? 'success' : 'error'}
+                            variant="outlined"
+                          />
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title="View Details">
+                        <IconButton size="small" color="primary">
+                          <Visibility />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      ))}
 
       {totalPages > 1 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>

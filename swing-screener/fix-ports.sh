@@ -17,3 +17,4 @@ echo "✅ Ports cleaned up!"
 echo "Now run:"
 echo "Terminal 1: cd '/Users/kesha/Desktop/Stock Analyser/swing-screener' && npm run dev"
 echo "Terminal 2: cd '/Users/kesha/Desktop/Stock Analyser/swing-screener/client' && npm run dev"
+

@@ -147,12 +147,31 @@ export class StockRepository extends BaseRepository {
         st.id, st.symbol, st.name,
         sa.qualified, sa.fail_step, sa.fail_reason, sa.current_price,
         sa.ema10, sa.ema20, sa.strategy_details,
-        sa.analysis_duration_ms, sa.data_points_daily, sa.data_points_intraday
+        sa.analysis_duration_ms, sa.data_points_daily, sa.data_points_intraday,
+        s.scan_date
       FROM stocks st
       JOIN scans s ON st.scan_id = s.id
       LEFT JOIN stock_analysis sa ON st.id = sa.stock_id
       WHERE s.scan_date = (SELECT MAX(scan_date) FROM scans)
       ORDER BY st.symbol
+    `;
+
+    const result = await this.query(text);
+    return result.rows;
+  }
+
+  async getAllStocksWithAnalysis(): Promise<any[]> {
+    const text = `
+      SELECT 
+        st.id, st.symbol, st.name,
+        sa.qualified, sa.fail_step, sa.fail_reason, sa.current_price,
+        sa.ema10, sa.ema20, sa.strategy_details,
+        sa.analysis_duration_ms, sa.data_points_daily, sa.data_points_intraday,
+        s.scan_date
+      FROM stocks st
+      JOIN scans s ON st.scan_id = s.id
+      LEFT JOIN stock_analysis sa ON st.id = sa.stock_id
+      ORDER BY s.scan_date DESC, st.symbol
     `;
 
     const result = await this.query(text);
@@ -232,5 +251,131 @@ export class StockRepository extends BaseRepository {
     const result = await this.query(text);
     this.logger.info(`Deleted ${result.rowCount} old scans`);
     return result.rowCount || 0;
+  }
+
+  /**
+   * Check if stocks were already scraped today
+   * @returns true if stocks exist for today's date, false otherwise
+   */
+  async hasStocksForToday(): Promise<boolean> {
+    const text = `
+      SELECT COUNT(*) as count
+      FROM stocks st
+      JOIN scans s ON st.scan_id = s.id
+      WHERE DATE(s.scan_date) = CURRENT_DATE
+    `;
+
+    const result = await this.query<{ count: string }>(text);
+    const count = parseInt(result.rows[0]?.count || '0', 10);
+    return count > 0;
+  }
+
+  /**
+   * Get stocks from today's scan
+   * @returns Array of StockData from today's scan
+   */
+  async getStocksFromToday(): Promise<StockData[]> {
+    const text = `
+      SELECT DISTINCT st.symbol, st.name
+      FROM stocks st
+      JOIN scans s ON st.scan_id = s.id
+      WHERE DATE(s.scan_date) = CURRENT_DATE
+      ORDER BY st.symbol
+    `;
+
+    const result = await this.query<StockData>(text);
+    this.logger.info(`Fetched ${result.rows.length} stocks from today's scan`);
+    return result.rows;
+  }
+
+  /**
+   * Get today's scan record
+   * @returns ScanRecord for today or null if no scan exists
+   */
+  async getTodayScanRecord(): Promise<ScanRecord | null> {
+    const text = `
+      SELECT 
+        s.id, s.scan_date, s.total_stocks_scraped, s.stocks_analyzed, s.stocks_passed,
+        s.scan_duration_seconds
+      FROM scans s
+      WHERE DATE(s.scan_date) = CURRENT_DATE
+      ORDER BY s.scan_date DESC
+      LIMIT 1
+    `;
+
+    const result = await this.query<ScanRecord>(text);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get stocks from today's scan with their IDs
+   * Used when re-analyzing cached stocks
+   * @param scanId - The scan ID to get stocks for
+   * @returns Array of StockRecord with id, symbol, and name
+   */
+  async getStocksFromTodayWithIds(scanId: string): Promise<StockRecord[]> {
+    const text = `
+      SELECT st.id, st.symbol, st.name, st.scan_id as "scanId"
+      FROM stocks st
+      JOIN scans s ON st.scan_id = s.id
+      WHERE DATE(s.scan_date) = CURRENT_DATE
+      ORDER BY st.symbol
+    `;
+
+    const result = await this.query<StockRecord>(text);
+    this.logger.info(`Fetched ${result.rows.length} stocks with IDs from today's scan`);
+    return result.rows;
+  }
+
+  /**
+   * Check if analysis already exists for today's stocks
+   * @returns true if all stocks from today have analysis records, false otherwise
+   */
+  async hasAnalysisForTodayStocks(): Promise<boolean> {
+    const text = `
+      SELECT 
+        COUNT(DISTINCT st.id) as total_stocks,
+        COUNT(DISTINCT sa.stock_id) as analyzed_stocks
+      FROM stocks st
+      JOIN scans s ON st.scan_id = s.id
+      LEFT JOIN stock_analysis sa ON st.id = sa.stock_id AND DATE(sa.created_at) = CURRENT_DATE
+      WHERE DATE(s.scan_date) = CURRENT_DATE
+    `;
+
+    const result = await this.query<{ total_stocks: string; analyzed_stocks: string }>(text);
+    const totalStocks = parseInt(result.rows[0]?.total_stocks || '0', 10);
+    const analyzedStocks = parseInt(result.rows[0]?.analyzed_stocks || '0', 10);
+    
+    const hasAnalysis = totalStocks > 0 && analyzedStocks === totalStocks;
+    this.logger.info(`Analysis check for today: ${analyzedStocks}/${totalStocks} stocks analyzed`);
+    return hasAnalysis;
+  }
+
+  /**
+   * Get existing analysis results for today's stocks
+   * @returns Array of stocks with their existing analysis results
+   */
+  async getTodayStocksWithAnalysis(): Promise<any[]> {
+    const text = `
+      SELECT 
+        st.id, st.symbol, st.name, st.scan_id as "scanId",
+        sa.qualified, 
+        sa.fail_step as "failedAt", 
+        sa.fail_reason as reason,
+        sa.current_price as "currentPrice",
+        sa.ema10,
+        sa.ema20,
+        sa.strategy_details as details, 
+        sa.created_at as "analysisCreatedAt"
+      FROM stocks st
+      JOIN scans s ON st.scan_id = s.id
+      LEFT JOIN stock_analysis sa ON st.id = sa.stock_id AND DATE(sa.created_at) = CURRENT_DATE
+      WHERE DATE(s.scan_date) = CURRENT_DATE
+      ORDER BY st.symbol
+    `;
+
+    const result = await this.query(text);
+    this.logger.info(`Fetched ${result.rows.length} stocks with analysis from today`);
+    return result.rows;
   }
 }

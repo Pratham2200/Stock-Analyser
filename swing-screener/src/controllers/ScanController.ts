@@ -79,9 +79,20 @@ export class ScanController extends BaseController {
     this.logRequest(req, 'GET', '/api/selected');
     
     try {
-      const selected = await this.scanService.getSelectedStocks();
-      this.success(res, selected);
+      const { page, limit } = this.getPaginationParams(req);
+      const result = await this.scanService.getSelectedStocks(page, limit);
+      
+      if (!result || typeof result !== 'object' || !Array.isArray(result.stocks)) {
+        this.logger.error('Invalid result from getSelectedStocks:', result);
+        this.error(res, 'Invalid response from service', 500);
+        return;
+      }
+      
+      const { stocks, total } = result;
+      const response = this.createPaginatedResponse(stocks, total, page, limit);
+      res.json(response);
     } catch (error) {
+      this.logger.error('Error in getSelectedStocks endpoint:', error);
       this.error(res, (error as Error).message, 500);
     }
   });

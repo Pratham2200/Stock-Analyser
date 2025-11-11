@@ -37,16 +37,7 @@ export abstract class BaseController extends BaseService {
     };
   }
 
-  protected validateRequired<T>(data: T, fields: (keyof T)[]): void {
-    const missing = fields.filter(field => !data[field] && data[field] !== 0);
-    
-    if (missing.length > 0) {
-      throw this.createAppError(
-        new Error(`Missing required fields: ${missing.join(', ')}`),
-        'Validation failed'
-      );
-    }
-  }
+  // validateRequired is inherited from BaseService
 
   protected validateQuery(req: Request, fields: string[]): void {
     const missing = fields.filter(field => !req.query[field]);
