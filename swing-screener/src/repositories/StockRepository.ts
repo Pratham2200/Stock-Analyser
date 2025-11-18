@@ -111,9 +111,9 @@ export class StockRepository extends BaseRepository {
         scan_id: scanId,
         entry_price: selectedStockData.entryPrice,
         stop_loss: selectedStockData.stopLoss,
-        target_1: selectedStockData.target1,
-        target_2: selectedStockData.target2,
-        target_3: selectedStockData.target3,
+        target1: selectedStockData.target1,
+        target2: selectedStockData.target2,
+        target3: selectedStockData.target3,
         position_size: selectedStockData.positionSize,
         position_value: selectedStockData.positionValue
       }
@@ -181,16 +181,17 @@ export class StockRepository extends BaseRepository {
   async getSelectedStocks(): Promise<any[]> {
     const text = `
       SELECT 
+        ss.id as selected_stock_id,
         st.symbol, st.name,
-        ss.entry_price, ss.stop_loss, ss.target_1, ss.target_2, ss.target_3,
+        ss.entry_price, ss.stop_loss, ss.target1 as target_1, ss.target2 as target_2, ss.target3 as target_3,
         ss.position_size, ss.position_value,
         sa.current_price, sa.ema10, sa.ema20,
-        s.scan_date
+        COALESCE(s.scan_date, ss.created_at) as scan_date
       FROM selected_stocks ss
       JOIN stocks st ON ss.stock_id = st.id
       JOIN scans s ON st.scan_id = s.id
       LEFT JOIN stock_analysis sa ON st.id = sa.stock_id
-      ORDER BY s.scan_date DESC, st.symbol
+      ORDER BY COALESCE(s.scan_date, ss.created_at) DESC, st.symbol
     `;
 
     const result = await this.query(text);

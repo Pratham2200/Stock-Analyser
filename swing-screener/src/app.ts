@@ -16,10 +16,12 @@ import { ScanService } from './services/ScanService';
 import { StockAnalysisService } from './services/StockAnalysisService';
 import { ScraperService } from './services/ScraperService';
 import { StockDataService } from './services/StockDataService';
+import { PriceTrackingService } from './services/PriceTrackingService';
 
 // Repositories
 import { StockRepository } from './repositories/StockRepository';
 import { PortfolioRepository } from './repositories/PortfolioRepository';
+import { PriceTrackingRepository } from './repositories/PriceTrackingRepository';
 
 // Controllers are imported in routes
 
@@ -101,6 +103,7 @@ export class App {
     // Initialize repositories
     const stockRepository = new StockRepository(this.pool);
     const portfolioRepository = new PortfolioRepository(this.pool);
+    const priceTrackingRepository = new PriceTrackingRepository(this.pool);
 
     // Initialize services
     const stockAnalysisService = new StockAnalysisService();
@@ -116,16 +119,24 @@ export class App {
       this.config
     );
 
+    // Initialize price tracking service
+    const priceTrackingService = new PriceTrackingService(
+      stockDataService,
+      priceTrackingRepository
+    );
+
     // Store services in app for use in controllers
     this.app.locals.services = {
       scanService,
       stockAnalysisService,
-      scraperService
+      scraperService,
+      priceTrackingService
     };
 
     this.app.locals.repositories = {
       stockRepository,
-      portfolioRepository
+      portfolioRepository,
+      priceTrackingRepository
     };
 
     this.logger.info('Services initialized');

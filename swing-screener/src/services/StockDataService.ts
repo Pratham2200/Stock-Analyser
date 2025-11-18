@@ -3,16 +3,18 @@
 import yahooFinance from 'yahoo-finance2';
 import { BaseService } from './BaseService';
 import { DailyBar } from '../types/analysis';
+import { getGlobalRateLimiter } from '../utils/rateLimiter';
 
 export class StockDataService extends BaseService {
   // Yahoo Finance rate limit recommendations:
-  // - Maximum ~60 requests per minute to avoid throttling
-  // - Recommended: 1 second (1000ms) delay between requests
+  // - No official rate limits documented by Yahoo
+  // - Community observations: Too many requests can lead to IP bans
+  // - Conservative approach: 2 seconds between requests (max 30 requests/minute)
   // - Implement exponential backoff for rate limit errors (HTTP 429)
   
-  private readonly MIN_DELAY_MS = 1000; // 1 second minimum between requests
   private readonly MAX_RETRIES = 3;
   private readonly INITIAL_RETRY_DELAY_MS = 2000; // 2 seconds initial retry delay
+  private rateLimiter = getGlobalRateLimiter();
 
   constructor() {
     super('StockDataService');
@@ -30,6 +32,9 @@ export class StockDataService extends BaseService {
    */
   async fetchDailyBars(symbol: string, days: number = 120, retryCount: number = 0): Promise<DailyBar[]> {
     try {
+      // Wait for rate limiter before making request
+      await this.rateLimiter.waitIfNeeded();
+      
       // Convert Indian stock symbol to Yahoo Finance format
       // Chartink stocks are NSE stocks, so add .NS suffix
       const yahooSymbol = this.convertToYahooSymbol(symbol);
@@ -113,7 +118,12 @@ export class StockDataService extends BaseService {
         const retryDelay = this.INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount); // Exponential backoff: 2s, 4s, 8s
         this.logger.warn(`⚠️ Rate limit hit for ${symbol}. Retrying in ${retryDelay}ms... (Attempt ${retryCount + 1}/${this.MAX_RETRIES})`);
         
+        // Wait for exponential backoff delay
         await this.delay(retryDelay);
+        
+        // Reset rate limiter window to allow retry
+        this.rateLimiter.reset();
+        
         return this.fetchDailyBars(symbol, days, retryCount + 1);
       }
       
@@ -150,6 +160,9 @@ export class StockDataService extends BaseService {
    */
   async fetchCurrentPrice(symbol: string): Promise<number | null> {
     try {
+      // Wait for rate limiter before making request
+      await this.rateLimiter.waitIfNeeded();
+      
       const yahooSymbol = this.convertToYahooSymbol(symbol);
       const quote = await yahooFinance.quote(yahooSymbol);
       

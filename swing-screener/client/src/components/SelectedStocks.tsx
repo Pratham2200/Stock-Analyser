@@ -73,6 +73,9 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalStocks, setTotalStocks] = useState(0);
+  const [trackingPrices, setTrackingPrices] = useState(false);
+  const [priceHistory, setPriceHistory] = useState<any>(null);
+  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
 
   useEffect(() => {
     fetchSelectedStocks();
@@ -137,9 +140,61 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
     return pnl >= 0 ? 'success' : 'error';
   };
 
-  const handleViewDetails = (stock: SelectedStock) => {
+  const handleViewDetails = async (stock: SelectedStock) => {
     setSelectedStock(stock);
     setDetailsOpen(true);
+    
+    // Fetch price history when opening details
+    setPriceHistoryLoading(true);
+    try {
+      const response = await fetchData(`/selected/${stock.symbol}/prices`);
+      if (response.success) {
+        setPriceHistory(response.data);
+      } else {
+        setPriceHistory(null);
+      }
+    } catch (err) {
+      console.error('Error fetching price history:', err);
+      setPriceHistory(null);
+    } finally {
+      setPriceHistoryLoading(false);
+    }
+  };
+
+  const handleTrackPrices = async () => {
+    try {
+      setTrackingPrices(true);
+      const response = await fetchData('/selected/track-prices', {
+        method: 'POST'
+      });
+      
+      if (response.success) {
+        setSnack({ 
+          open: true, 
+          msg: `Price tracking started for ${response.data?.length || 0} stocks`, 
+          severity: 'success' 
+        });
+        // Refresh stocks after a delay
+        setTimeout(() => {
+          fetchSelectedStocks();
+        }, 2000);
+      } else {
+        setSnack({ 
+          open: true, 
+          msg: 'Failed to start price tracking', 
+          severity: 'error' 
+        });
+      }
+    } catch (err) {
+      console.error('Error tracking prices:', err);
+      setSnack({ 
+        open: true, 
+        msg: 'Error starting price tracking', 
+        severity: 'error' 
+      });
+    } finally {
+      setTrackingPrices(false);
+    }
   };
 
   if (loading) {
@@ -171,7 +226,8 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
           display: 'flex', 
           flexWrap: 'wrap',
           gap: { xs: 1, sm: 2 }, 
-          mb: 2 
+          mb: 2,
+          alignItems: 'center'
         }}>
           <Chip 
             label={`Total: ${totalStocks}`} 
@@ -185,6 +241,16 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
             variant="outlined"
             size={isMobile ? 'small' : 'medium'}
           />
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={trackingPrices ? <CircularProgress size={16} /> : <TrendingUp />}
+            onClick={handleTrackPrices}
+            disabled={trackingPrices || totalStocks === 0}
+            size={isMobile ? 'small' : 'medium'}
+          >
+            {trackingPrices ? 'Tracking Prices...' : 'Run Selected Scan'}
+          </Button>
         </Box>
       </Box>
 
@@ -321,14 +387,22 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
       )}
 
       {/* Stock Details Dialog */}
-      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} maxWidth="md" fullWidth>
+      <Dialog 
+        open={detailsOpen} 
+        onClose={() => {
+          setDetailsOpen(false);
+          setPriceHistory(null);
+        }} 
+        maxWidth="lg" 
+        fullWidth
+      >
         <DialogTitle>
           Stock Details - {selectedStock?.symbol}
         </DialogTitle>
         <DialogContent>
           {selectedStock && (
             <Box>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 3 }}>
                 <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
                   <Typography variant="h6" gutterBottom>
                     Basic Information
@@ -365,11 +439,141 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                   </Box>
                 </Box>
               </Box>
+
+              <Divider sx={{ my: 3 }} />
+
+              {/* Price Movement Summary */}
+              {priceHistory && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Price Performance
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+                    <Chip
+                      label={`Current Price: ${formatPrice(priceHistory.currentPrice)}`}
+                      color={priceHistory.priceMovement >= 0 ? 'success' : 'error'}
+                      variant="outlined"
+                    />
+                    <Chip
+                      label={`Movement: ${priceHistory.priceMovement >= 0 ? '+' : ''}${priceHistory.priceMovement.toFixed(2)}%`}
+                      color={priceHistory.priceMovement >= 0 ? 'success' : 'error'}
+                      variant="filled"
+                    />
+                  </Box>
+
+                  {/* Targets Hit Status */}
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Targets Reached:
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      {priceHistory.targetsHit && priceHistory.targetsHit.length > 0 ? (
+                        priceHistory.targetsHit.map((target: any) => (
+                          <Chip
+                            key={target.type}
+                            label={`${target.type.toUpperCase()}: ${formatPrice(target.price)} on ${new Date(target.date).toLocaleDateString()}`}
+                            color="success"
+                            size="small"
+                            icon={<CheckCircle />}
+                          />
+                        ))
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          No targets reached yet
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+
+                  {/* Stop Loss Status */}
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Stop Loss Status:
+                    </Typography>
+                    {priceHistory.stoplossHit ? (
+                      <Chip
+                        label={`Hit on ${new Date(priceHistory.stoplossHit.date).toLocaleDateString()} at ${formatPrice(priceHistory.stoplossHit.price)}`}
+                        color="error"
+                        icon={<Cancel />}
+                      />
+                    ) : (
+                      <Chip
+                        label="Not Hit"
+                        color="success"
+                        variant="outlined"
+                      />
+                    )}
+                  </Box>
+                </Box>
+              )}
+
+              <Divider sx={{ my: 3 }} />
+
+              {/* Price History Table */}
+              <Typography variant="h6" gutterBottom>
+                Daily Price History
+              </Typography>
+              {priceHistoryLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : priceHistory && priceHistory.prices && priceHistory.prices.length > 0 ? (
+                <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+                  <Table stickyHeader size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>Date</strong></TableCell>
+                        <TableCell align="right"><strong>Open</strong></TableCell>
+                        <TableCell align="right"><strong>High</strong></TableCell>
+                        <TableCell align="right"><strong>Low</strong></TableCell>
+                        <TableCell align="right"><strong>Close</strong></TableCell>
+                        <TableCell align="right"><strong>Volume</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {priceHistory.prices.map((price: any, index: number) => {
+                        const isTargetHit = priceHistory.targetsHit?.some((t: any) => t.date === price.date);
+                        const isStoplossHit = priceHistory.stoplossHit?.date === price.date;
+                        
+                        return (
+                          <TableRow 
+                            key={index}
+                            sx={{
+                              backgroundColor: isStoplossHit ? 'error.light' : isTargetHit ? 'success.light' : 'inherit',
+                              '&:hover': { backgroundColor: 'action.hover' }
+                            }}
+                          >
+                            <TableCell>{new Date(price.date).toLocaleDateString()}</TableCell>
+                            <TableCell align="right">{formatPrice(price.open)}</TableCell>
+                            <TableCell align="right">{formatPrice(price.high)}</TableCell>
+                            <TableCell align="right">{formatPrice(price.low)}</TableCell>
+                            <TableCell align="right">
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                {formatPrice(price.close)}
+                                {isTargetHit && <CheckCircle fontSize="small" color="success" />}
+                                {isStoplossHit && <Cancel fontSize="small" color="error" />}
+                              </Box>
+                            </TableCell>
+                            <TableCell align="right">{price.volume.toLocaleString()}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Alert severity="info">
+                  No price history available. Click "Run Selected Scan" to start tracking prices.
+                </Alert>
+              )}
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailsOpen(false)}>Close</Button>
+          <Button onClick={() => {
+            setDetailsOpen(false);
+            setPriceHistory(null);
+          }}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

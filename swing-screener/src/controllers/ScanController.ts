@@ -3,13 +3,16 @@
 import { Request, Response } from 'express';
 import { BaseController } from './BaseController';
 import { ScanService } from '../services/ScanService';
+import { PriceTrackingService } from '../services/PriceTrackingService';
 
 export class ScanController extends BaseController {
   private scanService: ScanService;
+  private priceTrackingService?: PriceTrackingService;
 
-  constructor(scanService: ScanService) {
+  constructor(scanService: ScanService, priceTrackingService?: PriceTrackingService) {
     super('ScanController');
     this.scanService = scanService;
+    this.priceTrackingService = priceTrackingService;
   }
 
   getStatus = this.handleAsync(async (req: Request, res: Response) => {
@@ -183,6 +186,73 @@ export class ScanController extends BaseController {
         status: "development",
         features: ["Real-time logs", "Error tracking", "Performance monitoring"],
         estimatedRelease: "Q1 2025"
+      });
+    } catch (error) {
+      this.error(res, (error as Error).message, 500);
+    }
+  });
+
+  trackSelectedStocksPrices = this.handleAsync(async (req: Request, res: Response) => {
+    this.logRequest(req, 'POST', '/api/selected/track-prices');
+    
+    if (!this.priceTrackingService) {
+      this.error(res, 'Price tracking service not available', 500);
+      return;
+    }
+
+    try {
+      const results = await this.priceTrackingService.trackAllSelectedStocks();
+      this.success(res, results, 'Price tracking started successfully', 202);
+    } catch (error) {
+      this.error(res, (error as Error).message, 500);
+    }
+  });
+
+  getStockPriceHistory = this.handleAsync(async (req: Request, res: Response) => {
+    const { symbol } = req.params;
+    this.logRequest(req, 'GET', `/api/selected/${symbol}/prices`);
+    
+    if (!this.priceTrackingService) {
+      this.error(res, 'Price tracking service not available', 500);
+      return;
+    }
+
+    try {
+      // Get selected stock ID from symbol - fetch all stocks to find the one we need
+      const selectedStocks = await this.scanService.getSelectedStocks(1, 10000);
+      const stock = selectedStocks.stocks.find((s: any) => s.symbol === symbol);
+      
+      if (!stock) {
+        this.error(res, `Selected stock not found for symbol: ${symbol}`, 404);
+        return;
+      }
+
+      // Get selected_stock_id from the stock data
+      const selectedStockId = stock.selected_stock_id;
+      if (!selectedStockId) {
+        this.error(res, `Selected stock ID not found for symbol: ${symbol}`, 404);
+        return;
+      }
+
+      const priceHistory = await this.priceTrackingService.getPriceHistory(selectedStockId);
+      
+      // Get current price and calculate movement
+      const latestPrice = priceHistory.prices.length > 0 
+        ? priceHistory.prices[priceHistory.prices.length - 1].close 
+        : stock.current_price || stock.entry_price;
+      
+      const entryPrice = stock.entry_price || 0;
+      const priceMovement = entryPrice > 0 
+        ? ((latestPrice - entryPrice) / entryPrice) * 100 
+        : 0;
+
+      this.success(res, {
+        ...priceHistory,
+        entryPrice,
+        currentPrice: latestPrice,
+        priceMovement,
+        symbol: stock.symbol,
+        name: stock.name
       });
     } catch (error) {
       this.error(res, (error as Error).message, 500);
