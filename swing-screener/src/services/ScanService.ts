@@ -292,16 +292,21 @@ export class ScanService extends BaseService {
       // Get latest scan results
       const latestScan = await this.stockRepository.getLatestScanResults();
       
-      // Get overall statistics
-      const statistics = await this.stockRepository.getAnalysisStatistics();
+      // Get overall statistics (with error handling)
+      let statistics = null;
+      try {
+        statistics = await this.stockRepository.getAnalysisStatistics();
+      } catch (statError) {
+        this.logger.warn('Error fetching statistics (non-critical):', statError);
+        // Continue without statistics
+      }
       
       // Calculate metrics
       // Note: Database returns snake_case, but TypeScript interface uses camelCase
-      // Using type assertion to access the actual database column names
-      const scanData = latestScan as any;
-      const totalStocks = scanData?.total_stocks_scraped || scanData?.totalStocksScraped || 0;
-      const qualifiedStocks = scanData?.stocks_passed || scanData?.stocksPassed || 0;
-      const analyzedStocks = scanData?.stocks_analyzed || scanData?.stocksAnalyzed || 0;
+      // Database queries now return camelCase due to column aliases
+      const totalStocks = latestScan?.totalStocksScraped || 0;
+      const qualifiedStocks = latestScan?.stocksPassed || 0;
+      const analyzedStocks = latestScan?.stocksAnalyzed || 0;
       const successRate = analyzedStocks > 0 ? Math.round((qualifiedStocks / analyzedStocks) * 100) : 0;
       
       return {
@@ -310,8 +315,8 @@ export class ScanService extends BaseService {
         qualifiedStocks,
         analyzedStocks,
         successRate,
-        lastScan: scanData?.scan_date || scanData?.scanDate ? new Date(scanData.scan_date || scanData.scanDate).toISOString() : null,
-        scanDuration: scanData?.scan_duration_seconds || scanData?.scanDurationSeconds || 0,
+        lastScan: latestScan?.scanDate ? new Date(latestScan.scanDate).toISOString() : null,
+        scanDuration: latestScan?.scanDurationSeconds || 0,
         nextScan: null,
         cronTime: this.config.scheduler.scanCron,
         timezone: this.config.scheduler.timezone
@@ -345,7 +350,13 @@ export class ScanService extends BaseService {
   }
 
   async getLatestResults(): Promise<any> {
-    return await this.stockRepository.getLatestScanResults();
+    try {
+      const results = await this.stockRepository.getLatestScanResults();
+      return results || null;
+    } catch (error) {
+      this.logger.error('Error in getLatestResults:', error);
+      throw error;
+    }
   }
 
   async getStocksFromLatestScan(_page: number = 1, _limit: number = 10): Promise<{ stocks: any[], total: number }> {
