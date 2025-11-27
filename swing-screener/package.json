@@ -14,7 +14,7 @@
     "db:migrate": "psql -d stock_analysis -f database/schema.sql"
   },
   "engines": {
-    "node": "20.18.0"
+    "node": ">=18.0.0"
   },
   "author": "Your Name",
   "license": "MIT",
