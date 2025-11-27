@@ -1,7 +1,7 @@
 {
   "name": "swing-screener",
   "version": "1.0.0",
-  "description": "Automated swing trading stock screener with real-time tracking, technical analysis, notification, and Google Sheets integration.",
+  "description": "Automated swing trading stock screener with real-time tracking and technical analysis.",
   "main": "src/main.ts",
   "scripts": {
     "start": "node dist/main.js",
@@ -14,7 +14,7 @@
     "db:migrate": "psql -d stock_analysis -f database/schema.sql"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "20.18.0"
   },
   "author": "Your Name",
   "license": "MIT",
@@ -24,14 +24,9 @@
     "dotenv": "^16.4.8",
     "express": "^4.19.2",
     "express-rate-limit": "^7.5.1",
-    "googleapis": "^133.0.0",
     "helmet": "^7.2.0",
-    "node-cron": "^3.0.2",
-    "nodemailer": "^6.9.11",
     "pg": "^8.16.3",
     "puppeteer": "^21.11.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "technicalindicators": "^3.1.0",
     "yahoo-finance2": "^2.5.10"
   },
@@ -41,8 +36,6 @@
     "@types/express": "^4.17.0",
     "@types/helmet": "^0.0.48",
     "@types/node": "^20.0.0",
-    "@types/node-cron": "^3.0.11",
-    "@types/nodemailer": "^6.4.0",
     "@types/pg": "^8.10.0",
     "concurrently": "^8.2.2",
     "nodemon": "^3.0.3",
