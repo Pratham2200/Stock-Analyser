@@ -8,7 +8,6 @@ package-lock.json
 .env.*.local
 
 # Build outputs
-dist/
 build/
 *.tsbuildinfo
 
