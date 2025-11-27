@@ -70,10 +70,29 @@ export class App {
   }
 
   private async setupMiddleware(): Promise<void> {
+    // Trust proxy (required for Render's load balancer)
+    this.app.set('trust proxy', 1);
+
     // Security middleware
     this.app.use(helmet());
+
+    // CORS configuration - use ALLOWED_ORIGINS for Render, fallback to localhost
+    const allowedOrigins = process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+      : ['http://localhost:3000', 'http://localhost:5173'];
+
     this.app.use(cors({
-      origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173'],
+      origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) {
+          return callback(null, true);
+        }
+        if (allowedOrigins.indexOf(origin) !== -1) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
       credentials: true
     }));
 
@@ -81,7 +100,9 @@ export class App {
     const limiter = rateLimit({
       windowMs: 15 * 60 * 1000, // 15 minutes
       max: 100, // limit each IP to 100 requests per windowMs
-      message: 'Too many requests from this IP, please try again later.'
+      message: 'Too many requests from this IP, please try again later.',
+      standardHeaders: true,
+      legacyHeaders: false
     });
     this.app.use('/api/', limiter);
 
@@ -186,12 +207,19 @@ export class App {
 
   async start(): Promise<void> {
     try {
-      const port = this.config.dashboard.port;
+      // Use PORT from Render (automatically set) or fallback to config
+      const port = process.env.PORT ? parseInt(process.env.PORT, 10) : this.config.dashboard.port;
+      const host = '0.0.0.0'; // Required for Render
       
-      this.server = this.app.listen(port, () => {
-        this.logger.info(`🚀 Server running on http://localhost:${port}`);
-        this.logger.info(`📊 API available at http://localhost:${port}/api`);
-        this.logger.info(`🎯 Frontend available at http://localhost:5173`);
+      this.server = this.app.listen(port, host, () => {
+        const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+        const baseUrl = `${protocol}://localhost:${port}`;
+        
+        this.logger.info(`🚀 Server running on ${host}:${port}`);
+        this.logger.info(`📊 API available at ${baseUrl}/api`);
+        if (process.env.NODE_ENV !== 'production') {
+          this.logger.info(`🎯 Frontend available at http://localhost:5173`);
+        }
       });
 
       // Graceful shutdown

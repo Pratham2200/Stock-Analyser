@@ -7,17 +7,35 @@ import { Logger } from '../utils/logger-enhanced';
 const logger = new Logger('Database');
 
 export function createDatabaseConnection(config: DatabaseConfig): Pool {
-  const poolConfig: PoolConfig = {
-    host: config.host,
-    port: config.port,
-    database: config.database,
-    user: config.user,
-    password: config.password,
-    ssl: config.ssl,
-    max: config.max,
-    idleTimeoutMillis: config.idleTimeoutMillis,
-    connectionTimeoutMillis: config.connectionTimeoutMillis
-  };
+  let poolConfig: PoolConfig;
+
+  // Prioritize DATABASE_URL for production (Supabase/Render)
+  if (process.env.DATABASE_URL) {
+    logger.info('Using DATABASE_URL for database connection (Production mode)');
+    poolConfig = {
+      connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false // Required for Supabase connections
+      },
+      max: config.max,
+      idleTimeoutMillis: config.idleTimeoutMillis,
+      connectionTimeoutMillis: config.connectionTimeoutMillis
+    } as PoolConfig;
+  } else {
+    // Fallback to local config for development
+    logger.info('Using local database configuration (Development mode)');
+    poolConfig = {
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      user: config.user,
+      password: config.password,
+      ssl: config.ssl,
+      max: config.max,
+      idleTimeoutMillis: config.idleTimeoutMillis,
+      connectionTimeoutMillis: config.connectionTimeoutMillis
+    } as PoolConfig;
+  }
 
   const pool = new Pool(poolConfig);
 

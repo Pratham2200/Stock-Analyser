@@ -42,14 +42,8 @@ class Logger {
   }
 
   private getLogLevel(): number {
-    const envLevel = process.env.LOG_LEVEL?.toUpperCase();
-    switch (envLevel) {
-      case 'ERROR': return 0;
-      case 'WARN': return 1;
-      case 'INFO': return 2;
-      case 'DEBUG': return 3;
-      default: return 2; // Default to INFO
-    }
+    // Hardcoded log level: 'info'
+    return 2; // INFO level
   }
 
   private formatMessage(level: string, message: string, data?: any): string {

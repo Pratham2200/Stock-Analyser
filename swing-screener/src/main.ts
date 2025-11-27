@@ -1,8 +1,8 @@
-// main.ts - Application entry point
+// src/main.ts - Application entry point
 
 import 'dotenv/config';
-import { App } from './src/app';
-import { Logger } from './src/utils/logger-enhanced';
+import { App } from './app';
+import { Logger } from './utils/logger-enhanced';
 
 const logger = new Logger('Main');
 
@@ -37,3 +37,4 @@ process.on('unhandledRejection', (reason: any, _promise: Promise<any>) => {
 
 // Start the application
 main();
+

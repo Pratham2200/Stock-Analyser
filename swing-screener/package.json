@@ -2,16 +2,19 @@
   "name": "swing-screener",
   "version": "1.0.0",
   "description": "Automated swing trading stock screener with real-time tracking, technical analysis, notification, and Google Sheets integration.",
-  "main": "main.ts",
+  "main": "src/main.ts",
   "scripts": {
-    "start": "ts-node main.ts",
-    "dev": "nodemon --exec ts-node main.ts",
+    "start": "node dist/main.js",
+    "dev": "nodemon --exec ts-node src/main.ts",
     "build": "tsc",
     "build:client": "cd client && npm run build",
     "dev:client": "cd client && npm run dev",
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:client\"",
     "db:setup": "psql -d stock_analysis -f database/schema.sql",
     "db:migrate": "psql -d stock_analysis -f database/schema.sql"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "author": "Your Name",
   "license": "MIT",
