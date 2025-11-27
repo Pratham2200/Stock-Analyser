@@ -7,9 +7,10 @@ package-lock.json
 .env.local
 .env.*.local
 
-# Build outputs
-build/
-*.tsbuildinfo
+# # Build outputs
+# dist/
+# build/
+# *.tsbuildinfo
 
 # System files
 .DS_Store
