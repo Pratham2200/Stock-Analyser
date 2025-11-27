@@ -2,6 +2,7 @@
 
 import { BaseService } from './BaseService';
 import { StockRepository } from '../repositories/StockRepository';
+import { PriceTrackingRepository } from '../repositories/PriceTrackingRepository';
 import { StockAnalysisService } from './StockAnalysisService';
 import { ScraperService } from './ScraperService';
 import { StockDataService } from './StockDataService';
@@ -10,6 +11,7 @@ import { ScanRecord, StockRecord } from '../types/database';
 
 export class ScanService extends BaseService {
   private stockRepository: StockRepository;
+  private priceTrackingRepository?: PriceTrackingRepository;
   private scraperService: ScraperService;
   private stockDataService: StockDataService;
   private config: AppConfig;
@@ -25,10 +27,12 @@ export class ScanService extends BaseService {
     analysisService: StockAnalysisService,
     scraperService: ScraperService,
     stockDataService: StockDataService,
-    config: AppConfig
+    config: AppConfig,
+    priceTrackingRepository?: PriceTrackingRepository
   ) {
     super('ScanService');
     this.stockRepository = stockRepository;
+    this.priceTrackingRepository = priceTrackingRepository;
     this.analysisService = analysisService;
     this.scraperService = scraperService;
     this.stockDataService = stockDataService;
@@ -452,5 +456,168 @@ export class ScanService extends BaseService {
       '2024-01-01 10:02:00 INFO [ScanService] Analysis completed',
       '2024-01-01 10:03:00 INFO [ScanService] Scan finished'
     ];
+  }
+
+  /**
+   * Get summary statistics for all selected stocks
+   */
+  async getSelectedStocksSummary(): Promise<{
+    totalStocks: number;
+    totalValue: number;
+    totalPnL: number;
+    averagePnL: number;
+    stocksInProfit: number;
+    stocksInLoss: number;
+    stocksAtStopLoss: number;
+    targetsHit: {
+      target1: number;
+      target2: number;
+      target3: number;
+    };
+    stocks: Array<{
+      symbol: string;
+      name: string;
+      entryPrice: number;
+      currentPrice: number;
+      priceMovement: number;
+      selectionDate: string;
+      stopLoss: number;
+      target1: number;
+      target2: number;
+      target3: number;
+      positionSize: number;
+      positionValue: number;
+      targetsHit: string[];
+      stoplossHit: boolean;
+    }>;
+  }> {
+    try {
+      // Get all selected stocks
+      const allStocks = await this.stockRepository.getSelectedStocks();
+      
+      if (!Array.isArray(allStocks) || allStocks.length === 0) {
+        return {
+          totalStocks: 0,
+          totalValue: 0,
+          totalPnL: 0,
+          averagePnL: 0,
+          stocksInProfit: 0,
+          stocksInLoss: 0,
+          stocksAtStopLoss: 0,
+          targetsHit: {
+            target1: 0,
+            target2: 0,
+            target3: 0
+          },
+          stocks: []
+        };
+      }
+
+      const stocksSummary: any[] = [];
+      let totalValue = 0;
+      let totalPnL = 0;
+      let stocksInProfit = 0;
+      let stocksInLoss = 0;
+      let stocksAtStopLoss = 0;
+      const targetsHit = {
+        target1: 0,
+        target2: 0,
+        target3: 0
+      };
+
+      // Process each stock
+      for (const stock of allStocks) {
+        const selectedStockId = stock.selected_stock_id;
+        const entryPrice = Number(stock.entry_price) || 0;
+        const stopLoss = Number(stock.stop_loss) || 0;
+        const positionSize = Number(stock.position_size) || 0;
+        
+        // Get latest price from price tracking
+        let currentPrice = Number(stock.current_price) || entryPrice;
+        if (this.priceTrackingRepository && selectedStockId) {
+          try {
+            const latestPrice = await this.priceTrackingRepository.getLatestPrice(selectedStockId);
+            if (latestPrice) {
+              currentPrice = Number(latestPrice.close_price) || currentPrice;
+            }
+          } catch (error) {
+            this.logger.debug(`Could not get latest price for ${stock.symbol}, using current_price`);
+          }
+        }
+
+        // Get targets hit
+        const targetsHitList: string[] = [];
+        let stoplossHit = false;
+        if (this.priceTrackingRepository && selectedStockId) {
+          try {
+            const targetsHitRecords = await this.priceTrackingRepository.getTargetsHit(selectedStockId);
+            targetsHitRecords.forEach(record => {
+              if (record.target_type === 'stoploss') {
+                stoplossHit = true;
+              } else {
+                targetsHitList.push(record.target_type);
+                if (record.target_type === 'target1') targetsHit.target1++;
+                if (record.target_type === 'target2') targetsHit.target2++;
+                if (record.target_type === 'target3') targetsHit.target3++;
+              }
+            });
+          } catch (error) {
+            this.logger.debug(`Could not get targets hit for ${stock.symbol}`);
+          }
+        }
+
+        // Calculate P&L
+        const priceMovement = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
+        const positionValue = currentPrice * positionSize;
+        const pnl = (currentPrice - entryPrice) * positionSize;
+        
+        totalValue += positionValue;
+        totalPnL += pnl;
+
+        if (priceMovement > 0) {
+          stocksInProfit++;
+        } else if (priceMovement < 0) {
+          stocksInLoss++;
+        }
+
+        if (stoplossHit || (stopLoss > 0 && currentPrice <= stopLoss)) {
+          stocksAtStopLoss++;
+        }
+
+        stocksSummary.push({
+          symbol: stock.symbol,
+          name: stock.name,
+          entryPrice: Number(entryPrice),
+          currentPrice: Number(currentPrice),
+          priceMovement: Number(priceMovement.toFixed(2)),
+          selectionDate: stock.scan_date || new Date().toISOString(),
+          stopLoss: Number(stopLoss),
+          target1: Number(stock.target_1) || 0,
+          target2: Number(stock.target_2) || 0,
+          target3: Number(stock.target_3) || 0,
+          positionSize: Number(positionSize),
+          positionValue: Number(positionValue.toFixed(2)),
+          targetsHit: targetsHitList,
+          stoplossHit
+        });
+      }
+
+      const averagePnL = allStocks.length > 0 ? totalPnL / allStocks.length : 0;
+
+      return {
+        totalStocks: allStocks.length,
+        totalValue: Number(totalValue.toFixed(2)),
+        totalPnL: Number(totalPnL.toFixed(2)),
+        averagePnL: Number(averagePnL.toFixed(2)),
+        stocksInProfit,
+        stocksInLoss,
+        stocksAtStopLoss,
+        targetsHit,
+        stocks: stocksSummary
+      };
+    } catch (error) {
+      this.logger.error('Error getting selected stocks summary:', error);
+      throw error;
+    }
   }
 }

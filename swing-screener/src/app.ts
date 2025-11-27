@@ -116,7 +116,8 @@ export class App {
       stockAnalysisService,
       scraperService,
       stockDataService,
-      this.config
+      this.config,
+      priceTrackingRepository
     );
 
     // Initialize price tracking service

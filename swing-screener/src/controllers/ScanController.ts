@@ -258,4 +258,15 @@ export class ScanController extends BaseController {
       this.error(res, (error as Error).message, 500);
     }
   });
+
+  getSelectedStocksSummary = this.handleAsync(async (req: Request, res: Response) => {
+    this.logRequest(req, 'GET', '/api/selected/summary');
+    
+    try {
+      const summary = await this.scanService.getSelectedStocksSummary();
+      this.success(res, summary);
+    } catch (error) {
+      this.error(res, (error as Error).message, 500);
+    }
+  });
 }

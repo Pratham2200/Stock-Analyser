@@ -33,6 +33,7 @@ export function createRoutes(services: any, _repositories: any, pool: any): Rout
   // Price tracking routes
   router.post('/selected/track-prices', scanController.trackSelectedStocksPrices);
   router.get('/selected/:symbol/prices', scanController.getStockPriceHistory);
+  router.get('/selected/summary', scanController.getSelectedStocksSummary);
 
   // Portfolio routes
   router.get('/portfolio', portfolioController.getPortfolio);

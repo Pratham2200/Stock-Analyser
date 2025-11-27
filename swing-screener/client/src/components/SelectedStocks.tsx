@@ -37,7 +37,9 @@ import {
   Visibility,
   Add,
   Edit,
-  Delete
+  Delete,
+  Assessment,
+  Summarize
 } from '@mui/icons-material';
 import { fetchData } from '../api';
 
@@ -76,10 +78,21 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
   const [trackingPrices, setTrackingPrices] = useState(false);
   const [priceHistory, setPriceHistory] = useState<any>(null);
   const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summary, setSummary] = useState<any>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   useEffect(() => {
     fetchSelectedStocks();
+    fetchSummary();
   }, [page]);
+
+  useEffect(() => {
+    // Refresh summary when price tracking completes
+    if (!trackingPrices && summaryOpen) {
+      fetchSummary();
+    }
+  }, [trackingPrices, summaryOpen]);
 
   const fetchSelectedStocks = async () => {
     try {
@@ -131,6 +144,17 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
     return `₹${Number(price).toFixed(2)}`;
   };
 
+  const safeToFixed = (value: any, decimals: number = 2): string => {
+    const num = Number(value);
+    if (isNaN(num) || num === null || num === undefined) return '0.00';
+    return num.toFixed(decimals);
+  };
+
+  const safeNumber = (value: any): number => {
+    const num = Number(value);
+    return isNaN(num) ? 0 : num;
+  };
+
   const calculatePnL = (current: number, entry: number) => {
     if (!entry || entry === 0) return 0;
     return ((current - entry) / entry) * 100;
@@ -161,6 +185,24 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
     }
   };
 
+  const fetchSummary = async () => {
+    try {
+      setSummaryLoading(true);
+      const response = await fetchData('/selected/summary');
+      
+      if (response.success) {
+        setSummary(response.data);
+      } else {
+        setSummary(null);
+      }
+    } catch (err) {
+      console.error('Error fetching summary:', err);
+      setSummary(null);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   const handleTrackPrices = async () => {
     try {
       setTrackingPrices(true);
@@ -174,9 +216,12 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
           msg: `Price tracking started for ${response.data?.length || 0} stocks`, 
           severity: 'success' 
         });
-        // Refresh stocks after a delay
+        // Refresh stocks and summary after a delay
         setTimeout(() => {
           fetchSelectedStocks();
+          if (summaryOpen) {
+            fetchSummary();
+          }
         }, 2000);
       } else {
         setSnack({ 
@@ -250,6 +295,18 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
             size={isMobile ? 'small' : 'medium'}
           >
             {trackingPrices ? 'Tracking Prices...' : 'Run Selected Scan'}
+          </Button>
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<Assessment />}
+            onClick={() => {
+              setSummaryOpen(true);
+              fetchSummary();
+            }}
+            size={isMobile ? 'small' : 'medium'}
+          >
+            View Summary
           </Button>
         </Box>
       </Box>
@@ -455,8 +512,8 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                       variant="outlined"
                     />
                     <Chip
-                      label={`Movement: ${priceHistory.priceMovement >= 0 ? '+' : ''}${priceHistory.priceMovement.toFixed(2)}%`}
-                      color={priceHistory.priceMovement >= 0 ? 'success' : 'error'}
+                      label={`Movement: ${safeNumber(priceHistory.priceMovement) >= 0 ? '+' : ''}${safeToFixed(priceHistory.priceMovement)}%`}
+                      color={safeNumber(priceHistory.priceMovement) >= 0 ? 'success' : 'error'}
                       variant="filled"
                     />
                   </Box>
@@ -573,7 +630,246 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
           <Button onClick={() => {
             setDetailsOpen(false);
             setPriceHistory(null);
-          }}>Close</Button>
+          }}>Close          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Summary Dialog */}
+      <Dialog 
+        open={summaryOpen} 
+        onClose={() => setSummaryOpen(false)} 
+        maxWidth="lg" 
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Summarize />
+            <Typography variant="h6">Selected Stocks Summary</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {summaryLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : summary && summary.totalStocks > 0 ? (
+            <Box>
+              {/* Overall Statistics */}
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                  Overall Statistics
+                </Typography>
+                <Box sx={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+                  gap: 2 
+                }}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="caption" color="text.secondary">Total Stocks</Typography>
+                      <Typography variant="h5" fontWeight="bold">{summary.totalStocks}</Typography>
+                    </CardContent>
+                  </Card>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="caption" color="text.secondary">Total Portfolio Value</Typography>
+                      <Typography variant="h5" fontWeight="bold" color="primary">
+                        ₹{safeNumber(summary.totalValue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="caption" color="text.secondary">Total P&L</Typography>
+                      <Typography 
+                        variant="h5" 
+                        fontWeight="bold" 
+                        color={safeNumber(summary.totalPnL) >= 0 ? 'success.main' : 'error.main'}
+                      >
+                        {safeNumber(summary.totalPnL) >= 0 ? '+' : ''}₹{safeNumber(summary.totalPnL).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="caption" color="text.secondary">Average P&L</Typography>
+                      <Typography 
+                        variant="h5" 
+                        fontWeight="bold"
+                        color={safeNumber(summary.averagePnL) >= 0 ? 'success.main' : 'error.main'}
+                      >
+                        {safeNumber(summary.averagePnL) >= 0 ? '+' : ''}₹{safeNumber(summary.averagePnL).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Box>
+              </Box>
+
+              {/* Performance Breakdown */}
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                  Performance Breakdown
+                </Typography>
+                <Box sx={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+                  gap: 2 
+                }}>
+                  <Card variant="outlined" sx={{ borderColor: 'success.main' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <TrendingUp color="success" />
+                        <Typography variant="subtitle1" fontWeight="bold">In Profit</Typography>
+                      </Box>
+                      <Typography variant="h4" color="success.main">{summary.stocksInProfit}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {summary.totalStocks > 0 ? ((summary.stocksInProfit / summary.totalStocks) * 100).toFixed(1) : 0}% of portfolio
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                  <Card variant="outlined" sx={{ borderColor: 'error.main' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <TrendingDown color="error" />
+                        <Typography variant="subtitle1" fontWeight="bold">In Loss</Typography>
+                      </Box>
+                      <Typography variant="h4" color="error.main">{summary.stocksInLoss}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {summary.totalStocks > 0 ? ((summary.stocksInLoss / summary.totalStocks) * 100).toFixed(1) : 0}% of portfolio
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                  <Card variant="outlined" sx={{ borderColor: 'warning.main' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <Cancel color="warning" />
+                        <Typography variant="subtitle1" fontWeight="bold">Stop Loss Hit</Typography>
+                      </Box>
+                      <Typography variant="h4" color="warning.main">{summary.stocksAtStopLoss}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {summary.totalStocks > 0 ? ((summary.stocksAtStopLoss / summary.totalStocks) * 100).toFixed(1) : 0}% of portfolio
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Box>
+              </Box>
+
+              {/* Targets Hit */}
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                  Targets Hit
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <Chip 
+                    label={`Target 1: ${summary.targetsHit.target1} stocks`} 
+                    color="success" 
+                    variant="outlined"
+                    icon={<CheckCircle />}
+                  />
+                  <Chip 
+                    label={`Target 2: ${summary.targetsHit.target2} stocks`} 
+                    color="info" 
+                    variant="outlined"
+                    icon={<CheckCircle />}
+                  />
+                  <Chip 
+                    label={`Target 3: ${summary.targetsHit.target3} stocks`} 
+                    color="warning" 
+                    variant="outlined"
+                    icon={<CheckCircle />}
+                  />
+                </Box>
+              </Box>
+
+              <Divider sx={{ my: 3 }} />
+
+              {/* Individual Stock Details */}
+              <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                Individual Stock Details
+              </Typography>
+              <TableContainer component={Paper} sx={{ maxHeight: 500 }}>
+                <Table stickyHeader size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Symbol</strong></TableCell>
+                      <TableCell><strong>Name</strong></TableCell>
+                      <TableCell align="right"><strong>Entry Price</strong></TableCell>
+                      <TableCell align="right"><strong>Current Price</strong></TableCell>
+                      <TableCell align="right"><strong>% Move</strong></TableCell>
+                      <TableCell align="right"><strong>Position Value</strong></TableCell>
+                      <TableCell><strong>Selection Date</strong></TableCell>
+                      <TableCell><strong>Status</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {summary.stocks.map((stock: any, index: number) => (
+                      <TableRow 
+                        key={index}
+                        sx={{
+                          backgroundColor: stock.stoplossHit ? 'error.light' : stock.priceMovement >= 0 ? 'success.light' : 'inherit',
+                          '&:hover': { backgroundColor: 'action.hover' }
+                        }}
+                      >
+                        <TableCell><strong>{stock.symbol}</strong></TableCell>
+                        <TableCell>{stock.name}</TableCell>
+                        <TableCell align="right">₹{safeToFixed(stock.entryPrice)}</TableCell>
+                        <TableCell align="right">₹{safeToFixed(stock.currentPrice)}</TableCell>
+                        <TableCell align="right">
+                          <Chip
+                            label={`${safeNumber(stock.priceMovement) >= 0 ? '+' : ''}${safeToFixed(stock.priceMovement)}%`}
+                            color={safeNumber(stock.priceMovement) >= 0 ? 'success' : 'error'}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell align="right">₹{safeNumber(stock.positionValue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell>{new Date(stock.selectionDate).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                            {stock.targetsHit && Array.isArray(stock.targetsHit) && stock.targetsHit.map((target: string) => (
+                              <Chip
+                                key={target}
+                                label={target.toUpperCase()}
+                                color="success"
+                                size="small"
+                                icon={<CheckCircle />}
+                              />
+                            ))}
+                            {stock.stoplossHit && (
+                              <Chip
+                                label="SL"
+                                color="error"
+                                size="small"
+                                icon={<Cancel />}
+                              />
+                            )}
+                            {!stock.stoplossHit && (!stock.targetsHit || !Array.isArray(stock.targetsHit) || stock.targetsHit.length === 0) && (
+                              <Chip label="Active" color="default" size="small" variant="outlined" />
+                            )}
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          ) : (
+            <Alert severity="info">
+              No selected stocks found. Run a scan to find qualified stocks.
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSummaryOpen(false)}>Close</Button>
+          <Button 
+            onClick={() => {
+              fetchSummary();
+            }}
+            variant="outlined"
+            disabled={summaryLoading}
+          >
+            Refresh
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
