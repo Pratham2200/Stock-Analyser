@@ -9,7 +9,7 @@ export function createRoutes(services: any, _repositories: any, pool: any): Rout
   const router = Router();
 
   // Initialize controllers
-  const scanController = new ScanController(services.scanService);
+  const scanController = new ScanController(services.scanService, services.priceTrackingService);
   const portfolioController = new PortfolioController();
   const healthController = new HealthController(pool);
 
@@ -29,6 +29,11 @@ export function createRoutes(services: any, _repositories: any, pool: any): Rout
   router.post('/analyze-stock', scanController.analyzeStock);
   router.get('/quote/:symbol', scanController.getQuote);
   router.get('/logs', scanController.getLogs);
+
+  // Price tracking routes
+  router.post('/selected/track-prices', scanController.trackSelectedStocksPrices);
+  router.get('/selected/:symbol/prices', scanController.getStockPriceHistory);
+  router.get('/selected/summary', scanController.getSelectedStocksSummary);
 
   // Portfolio routes
   router.get('/portfolio', portfolioController.getPortfolio);

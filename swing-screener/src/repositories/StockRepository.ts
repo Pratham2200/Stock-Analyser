@@ -27,7 +27,7 @@ export class StockRepository extends BaseRepository {
         stocks_passed: stocksPassed,
         scan_duration_seconds: scanDurationSeconds
       },
-      ['id', 'scan_date']
+      ['id', 'start_time']
     );
 
     const result = await this.query<ScanRecord>(text, values);
@@ -111,9 +111,9 @@ export class StockRepository extends BaseRepository {
         scan_id: scanId,
         entry_price: selectedStockData.entryPrice,
         stop_loss: selectedStockData.stopLoss,
-        target_1: selectedStockData.target1,
-        target_2: selectedStockData.target2,
-        target_3: selectedStockData.target3,
+        target1: selectedStockData.target1,
+        target2: selectedStockData.target2,
+        target3: selectedStockData.target3,
         position_size: selectedStockData.positionSize,
         position_value: selectedStockData.positionValue
       }
@@ -126,14 +126,18 @@ export class StockRepository extends BaseRepository {
   async getLatestScanResults(): Promise<ScanRecord | null> {
     const text = `
       SELECT 
-        s.id, s.scan_date, s.total_stocks_scraped, s.stocks_analyzed, s.stocks_passed,
-        s.scan_duration_seconds,
+        s.id, 
+        s.start_time as "scanDate", 
+        s.total_stocks_scraped as "totalStocksScraped", 
+        s.stocks_analyzed as "stocksAnalyzed", 
+        s.stocks_passed as "stocksPassed",
+        s.scan_duration_seconds as "scanDurationSeconds",
         COUNT(sa.id) as total_analysis,
         COUNT(CASE WHEN sa.qualified = true THEN 1 END) as qualified_count
       FROM scans s
       LEFT JOIN stock_analysis sa ON s.id = sa.scan_id
-      GROUP BY s.id, s.scan_date, s.total_stocks_scraped, s.stocks_analyzed, s.stocks_passed, s.scan_duration_seconds
-      ORDER BY s.scan_date DESC
+      GROUP BY s.id, s.start_time, s.total_stocks_scraped, s.stocks_analyzed, s.stocks_passed, s.scan_duration_seconds
+      ORDER BY s.start_time DESC
       LIMIT 1
     `;
 
@@ -148,11 +152,11 @@ export class StockRepository extends BaseRepository {
         sa.qualified, sa.fail_step, sa.fail_reason, sa.current_price,
         sa.ema10, sa.ema20, sa.strategy_details,
         sa.analysis_duration_ms, sa.data_points_daily, sa.data_points_intraday,
-        s.scan_date
+        s.start_time as scan_date
       FROM stocks st
       JOIN scans s ON st.scan_id = s.id
       LEFT JOIN stock_analysis sa ON st.id = sa.stock_id
-      WHERE s.scan_date = (SELECT MAX(scan_date) FROM scans)
+      WHERE s.start_time = (SELECT MAX(start_time) FROM scans)
       ORDER BY st.symbol
     `;
 
@@ -167,11 +171,11 @@ export class StockRepository extends BaseRepository {
         sa.qualified, sa.fail_step, sa.fail_reason, sa.current_price,
         sa.ema10, sa.ema20, sa.strategy_details,
         sa.analysis_duration_ms, sa.data_points_daily, sa.data_points_intraday,
-        s.scan_date
+        s.start_time as scan_date
       FROM stocks st
       JOIN scans s ON st.scan_id = s.id
       LEFT JOIN stock_analysis sa ON st.id = sa.stock_id
-      ORDER BY s.scan_date DESC, st.symbol
+      ORDER BY s.start_time DESC, st.symbol
     `;
 
     const result = await this.query(text);
@@ -181,16 +185,17 @@ export class StockRepository extends BaseRepository {
   async getSelectedStocks(): Promise<any[]> {
     const text = `
       SELECT 
+        ss.id as selected_stock_id,
         st.symbol, st.name,
-        ss.entry_price, ss.stop_loss, ss.target_1, ss.target_2, ss.target_3,
+        ss.entry_price, ss.stop_loss, ss.target1 as target_1, ss.target2 as target_2, ss.target3 as target_3,
         ss.position_size, ss.position_value,
         sa.current_price, sa.ema10, sa.ema20,
-        s.scan_date
+        COALESCE(s.start_time, ss.created_at) as scan_date
       FROM selected_stocks ss
       JOIN stocks st ON ss.stock_id = st.id
       JOIN scans s ON st.scan_id = s.id
       LEFT JOIN stock_analysis sa ON st.id = sa.stock_id
-      ORDER BY s.scan_date DESC, st.symbol
+      ORDER BY COALESCE(s.start_time, ss.created_at) DESC, st.symbol
     `;
 
     const result = await this.query(text);
@@ -222,19 +227,34 @@ export class StockRepository extends BaseRepository {
     `;
 
     const result = await this.query(text, params);
-    return result.rows[0];
+    return result.rows[0] || {
+      total_analysis: 0,
+      qualified_count: 0,
+      rejected_count: 0,
+      avg_duration: 0,
+      avg_score: 0,
+      consolidation_failures: 0,
+      higher_low_failures: 0,
+      volume_failures: 0,
+      bear_squeeze_failures: 0
+    };
   }
 
   async getScanHistory(limit: number = 10): Promise<ScanRecord[]> {
     const text = `
       SELECT 
-        s.*,
+        s.id, 
+        s.start_time as "scanDate", 
+        s.total_stocks_scraped as "totalStocksScraped", 
+        s.stocks_analyzed as "stocksAnalyzed", 
+        s.stocks_passed as "stocksPassed", 
+        s.scan_duration_seconds as "scanDurationSeconds",
         COUNT(sa.id) as total_analysis,
         COUNT(CASE WHEN sa.qualified = true THEN 1 END) as qualified_count
       FROM scans s
       LEFT JOIN stock_analysis sa ON s.id = sa.scan_id
-      GROUP BY s.id, s.scan_date, s.total_stocks_scraped, s.stocks_analyzed, s.stocks_passed, s.scan_duration_seconds
-      ORDER BY s.scan_date DESC
+      GROUP BY s.id, s.start_time, s.total_stocks_scraped, s.stocks_analyzed, s.stocks_passed, s.scan_duration_seconds
+      ORDER BY s.start_time DESC
       LIMIT $1
     `;
 
@@ -245,7 +265,7 @@ export class StockRepository extends BaseRepository {
   async deleteOldScans(olderThanDays: number = 30): Promise<number> {
     const text = `
       DELETE FROM scans 
-      WHERE scan_date < NOW() - INTERVAL '${olderThanDays} days'
+      WHERE start_time < NOW() - INTERVAL '${olderThanDays} days'
     `;
 
     const result = await this.query(text);
@@ -262,7 +282,7 @@ export class StockRepository extends BaseRepository {
       SELECT COUNT(*) as count
       FROM stocks st
       JOIN scans s ON st.scan_id = s.id
-      WHERE DATE(s.scan_date) = CURRENT_DATE
+      WHERE DATE(s.start_time) = CURRENT_DATE
     `;
 
     const result = await this.query<{ count: string }>(text);
@@ -279,7 +299,7 @@ export class StockRepository extends BaseRepository {
       SELECT DISTINCT st.symbol, st.name
       FROM stocks st
       JOIN scans s ON st.scan_id = s.id
-      WHERE DATE(s.scan_date) = CURRENT_DATE
+      WHERE DATE(s.start_time) = CURRENT_DATE
       ORDER BY st.symbol
     `;
 
@@ -295,11 +315,15 @@ export class StockRepository extends BaseRepository {
   async getTodayScanRecord(): Promise<ScanRecord | null> {
     const text = `
       SELECT 
-        s.id, s.scan_date, s.total_stocks_scraped, s.stocks_analyzed, s.stocks_passed,
-        s.scan_duration_seconds
+        s.id, 
+        s.start_time as "scanDate", 
+        s.total_stocks_scraped as "totalStocksScraped", 
+        s.stocks_analyzed as "stocksAnalyzed", 
+        s.stocks_passed as "stocksPassed",
+        s.scan_duration_seconds as "scanDurationSeconds"
       FROM scans s
-      WHERE DATE(s.scan_date) = CURRENT_DATE
-      ORDER BY s.scan_date DESC
+      WHERE DATE(s.start_time) = CURRENT_DATE
+      ORDER BY s.start_time DESC
       LIMIT 1
     `;
 
@@ -318,7 +342,7 @@ export class StockRepository extends BaseRepository {
       SELECT st.id, st.symbol, st.name, st.scan_id as "scanId"
       FROM stocks st
       JOIN scans s ON st.scan_id = s.id
-      WHERE DATE(s.scan_date) = CURRENT_DATE
+      WHERE DATE(s.start_time) = CURRENT_DATE
       ORDER BY st.symbol
     `;
 
@@ -339,7 +363,7 @@ export class StockRepository extends BaseRepository {
       FROM stocks st
       JOIN scans s ON st.scan_id = s.id
       LEFT JOIN stock_analysis sa ON st.id = sa.stock_id AND DATE(sa.created_at) = CURRENT_DATE
-      WHERE DATE(s.scan_date) = CURRENT_DATE
+      WHERE DATE(s.start_time) = CURRENT_DATE
     `;
 
     const result = await this.query<{ total_stocks: string; analyzed_stocks: string }>(text);
@@ -370,7 +394,7 @@ export class StockRepository extends BaseRepository {
       FROM stocks st
       JOIN scans s ON st.scan_id = s.id
       LEFT JOIN stock_analysis sa ON st.id = sa.stock_id AND DATE(sa.created_at) = CURRENT_DATE
-      WHERE DATE(s.scan_date) = CURRENT_DATE
+      WHERE DATE(s.start_time) = CURRENT_DATE
       ORDER BY st.symbol
     `;
 
