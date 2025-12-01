@@ -204,4 +204,12 @@ class App {
     }
 }
 exports.App = App;
+// === ADD THIS AT THE VERY BOTTOM ===
+const app = new App();
+app.initialize().then(() => {
+    app.start();
+}).catch((error) => {
+    console.error('Failed to start application:', error);
+    process.exit(1);
+});
 //# sourceMappingURL=app.js.map
