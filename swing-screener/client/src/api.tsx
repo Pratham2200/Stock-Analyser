@@ -1,8 +1,13 @@
 // src/api.tsx
 import axios, { AxiosResponse, AxiosError } from 'axios';
 
+// Define the Base URL from environment variable (Vite uses import.meta.env)
+// For production on Netlify, set VITE_API_URL to your Render backend URL
+// Example: https://stock-analyser-sm8q.onrender.com
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const api = axios.create({
-  baseURL: '/api/',
+  baseURL: `${API_BASE_URL}/api/`,
   timeout: 300000, // 5 minute timeout for scans
 });
 
