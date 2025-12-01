@@ -6,6 +6,8 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { Pool } from 'pg';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Logger } from './utils/logger-enhanced';
 import { AppConfig } from './types';
 import { createConfig } from './config';
@@ -168,16 +170,34 @@ export class App {
     const routes = createRoutes(this.app.locals.services, this.app.locals.repositories, this.pool);
     this.app.use('/api', routes);
 
-    // Serve static files
-    this.app.use(express.static('client/dist'));
-
-    // SPA fallback
-    this.app.get('*', (req, res) => {
-      if (req.path.startsWith('/api/')) {
-        return res.status(404).json({ error: 'API endpoint not found' });
-      }
-      return res.sendFile('client/dist/index.html', { root: process.cwd() });
-    });
+    // Serve static files (only if client/dist exists)
+    const clientDistPath = path.join(process.cwd(), 'client/dist');
+    
+    if (fs.existsSync(clientDistPath)) {
+      this.app.use(express.static('client/dist'));
+      this.logger.info('Static files enabled (client/dist found)');
+      
+      // SPA fallback
+      this.app.get('*', (req, res) => {
+        if (req.path.startsWith('/api/')) {
+          return res.status(404).json({ error: 'API endpoint not found' });
+        }
+        return res.sendFile('client/dist/index.html', { root: process.cwd() });
+      });
+    } else {
+      this.logger.info('Static files disabled (client/dist not found)');
+      
+      // API-only fallback for non-API routes
+      this.app.get('*', (req, res) => {
+        if (req.path.startsWith('/api/')) {
+          return res.status(404).json({ error: 'API endpoint not found' });
+        }
+        return res.status(404).json({ 
+          error: 'Frontend not available',
+          message: 'This is an API-only server. Frontend build not found.'
+        });
+      });
+    }
 
     this.logger.info('Routes configured');
   }
