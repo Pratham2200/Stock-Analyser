@@ -102,23 +102,68 @@ export class StockRepository extends BaseRepository {
       target3: number;
       positionSize: number;
       positionValue: number;
+      buyInitiated?: boolean;
+      highestPriceAfterSelection?: number;
+      lowestPriceAfterSelection?: number;
+      priceAnalysisPeriod?: number;
     }
   ): Promise<void> {
-    const { text, values } = this.buildInsertQuery(
-      'selected_stocks',
-      {
-        stock_id: stockId,
-        scan_id: scanId,
-        entry_price: selectedStockData.entryPrice,
-        stop_loss: selectedStockData.stopLoss,
-        target1: selectedStockData.target1,
-        target2: selectedStockData.target2,
-        target3: selectedStockData.target3,
-        position_size: selectedStockData.positionSize,
-        position_value: selectedStockData.positionValue
-      }
-    );
+    // Build the base insert data
+    const insertData: any = {
+      stock_id: stockId,
+      scan_id: scanId,
+      entry_price: selectedStockData.entryPrice,
+      stop_loss: selectedStockData.stopLoss,
+      target1: selectedStockData.target1,
+      target2: selectedStockData.target2,
+      target3: selectedStockData.target3,
+      position_size: selectedStockData.positionSize,
+      position_value: selectedStockData.positionValue
+    };
 
+    // Try to add new columns if provided
+    const hasNewColumns = selectedStockData.buyInitiated !== undefined ||
+                         selectedStockData.highestPriceAfterSelection !== undefined ||
+                         selectedStockData.lowestPriceAfterSelection !== undefined ||
+                         selectedStockData.priceAnalysisPeriod !== undefined;
+
+    if (hasNewColumns) {
+      if (selectedStockData.buyInitiated !== undefined) {
+        insertData.buy_initiated = selectedStockData.buyInitiated;
+      }
+      if (selectedStockData.highestPriceAfterSelection !== undefined) {
+        insertData.highest_price_after_selection = selectedStockData.highestPriceAfterSelection;
+      }
+      if (selectedStockData.lowestPriceAfterSelection !== undefined) {
+        insertData.lowest_price_after_selection = selectedStockData.lowestPriceAfterSelection;
+      }
+      if (selectedStockData.priceAnalysisPeriod !== undefined) {
+        insertData.price_analysis_period = selectedStockData.priceAnalysisPeriod;
+      }
+
+      // Try inserting with new columns first
+      try {
+        const { text, values } = this.buildInsertQuery('selected_stocks', insertData);
+        await this.query(text, values);
+        this.logger.info(`Inserted selected stock ${stockId} for scan ${scanId} with price analysis data`);
+        return;
+      } catch (error: any) {
+        // If columns don't exist, fall back to basic insert
+        if (error.message && error.message.includes('does not exist')) {
+          this.logger.warn(`New columns not found for ${stockId}, inserting without price analysis data. Please run migration.`);
+          // Remove new columns and retry with basic data
+          delete insertData.buy_initiated;
+          delete insertData.highest_price_after_selection;
+          delete insertData.lowest_price_after_selection;
+          delete insertData.price_analysis_period;
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    // Insert with basic data (either no new columns provided, or fallback after error)
+    const { text, values } = this.buildInsertQuery('selected_stocks', insertData);
     await this.query(text, values);
     this.logger.info(`Inserted selected stock ${stockId} for scan ${scanId}`);
   }
@@ -183,12 +228,16 @@ export class StockRepository extends BaseRepository {
   }
 
   async getSelectedStocks(): Promise<any[]> {
-    const text = `
-      SELECT 
+    // Try to query with new columns first, fallback to basic query if columns don't exist
+    let text = `
+      SELECT
         ss.id as selected_stock_id,
         st.symbol, st.name,
         ss.entry_price, ss.stop_loss, ss.target1 as target_1, ss.target2 as target_2, ss.target3 as target_3,
         ss.position_size, ss.position_value,
+        COALESCE(ss.buy_initiated, false) as buy_initiated,
+        ss.highest_price_after_selection, ss.lowest_price_after_selection,
+        COALESCE(ss.price_analysis_period, 0) as price_analysis_period,
         sa.current_price, sa.ema10, sa.ema20,
         COALESCE(s.start_time, ss.created_at) as scan_date
       FROM selected_stocks ss
@@ -198,8 +247,36 @@ export class StockRepository extends BaseRepository {
       ORDER BY COALESCE(s.start_time, ss.created_at) DESC, st.symbol
     `;
 
-    const result = await this.query(text);
-    return result.rows;
+    try {
+      const result = await this.query(text);
+      return result.rows;
+    } catch (error: any) {
+      // If columns don't exist, use fallback query without new columns
+      if (error.message && error.message.includes('does not exist')) {
+        this.logger.warn('New price analysis columns not found, using fallback query. Please run database migration.');
+        text = `
+          SELECT
+            ss.id as selected_stock_id,
+            st.symbol, st.name,
+            ss.entry_price, ss.stop_loss, ss.target1 as target_1, ss.target2 as target_2, ss.target3 as target_3,
+            ss.position_size, ss.position_value,
+            false as buy_initiated,
+            NULL as highest_price_after_selection,
+            NULL as lowest_price_after_selection,
+            0 as price_analysis_period,
+            sa.current_price, sa.ema10, sa.ema20,
+            COALESCE(s.start_time, ss.created_at) as scan_date
+          FROM selected_stocks ss
+          JOIN stocks st ON ss.stock_id = st.id
+          JOIN scans s ON st.scan_id = s.id
+          LEFT JOIN stock_analysis sa ON st.id = sa.stock_id
+          ORDER BY COALESCE(s.start_time, ss.created_at) DESC, st.symbol
+        `;
+        const result = await this.query(text);
+        return result.rows;
+      }
+      throw error;
+    }
   }
 
   async getAnalysisStatistics(scanId?: string): Promise<any> {

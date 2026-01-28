@@ -61,11 +61,17 @@ export class App {
 
   private async setupDatabase(): Promise<void> {
     try {
-      await this.pool.query('SELECT 1');
-      this.logger.info('Database connection established');
+      // Test database connection with timeout
+      await Promise.race([
+        this.pool.query('SELECT 1'),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Database connection timeout')), 10000)
+        )
+      ]);
+      this.logger.info('Database connection established successfully');
     } catch (error) {
       this.logger.error('Database connection failed:', error);
-      throw error;
+      throw new Error(`Database connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -100,47 +106,52 @@ export class App {
   }
 
   private async setupServices(): Promise<void> {
-    // Initialize repositories
-    const stockRepository = new StockRepository(this.pool);
-    const portfolioRepository = new PortfolioRepository(this.pool);
-    const priceTrackingRepository = new PriceTrackingRepository(this.pool);
+    try {
+      // Initialize repositories
+      const stockRepository = new StockRepository(this.pool);
+      const portfolioRepository = new PortfolioRepository(this.pool);
+      const priceTrackingRepository = new PriceTrackingRepository(this.pool);
 
-    // Initialize services
-    const stockAnalysisService = new StockAnalysisService();
-    const scraperService = new ScraperService();
-    const stockDataService = new StockDataService();
+      // Initialize services
+      const stockAnalysisService = new StockAnalysisService();
+      const scraperService = new ScraperService();
+      const stockDataService = new StockDataService();
 
-    // Initialize scan service
-    const scanService = new ScanService(
-      stockRepository,
-      stockAnalysisService,
-      scraperService,
-      stockDataService,
-      this.config,
-      priceTrackingRepository
-    );
+      // Initialize scan service
+      const scanService = new ScanService(
+        stockRepository,
+        stockAnalysisService,
+        scraperService,
+        stockDataService,
+        this.config,
+        priceTrackingRepository
+      );
 
-    // Initialize price tracking service
-    const priceTrackingService = new PriceTrackingService(
-      stockDataService,
-      priceTrackingRepository
-    );
+      // Initialize price tracking service
+      const priceTrackingService = new PriceTrackingService(
+        stockDataService,
+        priceTrackingRepository
+      );
 
-    // Store services in app for use in controllers
-    this.app.locals.services = {
-      scanService,
-      stockAnalysisService,
-      scraperService,
-      priceTrackingService
-    };
+      // Store services in app for use in controllers
+      this.app.locals.services = {
+        scanService,
+        stockAnalysisService,
+        scraperService,
+        priceTrackingService
+      };
 
-    this.app.locals.repositories = {
-      stockRepository,
-      portfolioRepository,
-      priceTrackingRepository
-    };
+      this.app.locals.repositories = {
+        stockRepository,
+        portfolioRepository,
+        priceTrackingRepository
+      };
 
-    this.logger.info('Services initialized');
+      this.logger.info('Services initialized successfully');
+    } catch (error) {
+      this.logger.error('Failed to initialize services:', error);
+      throw new Error(`Service initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private async setupRoutes(): Promise<void> {

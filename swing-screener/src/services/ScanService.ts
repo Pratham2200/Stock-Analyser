@@ -31,6 +31,24 @@ export class ScanService extends BaseService {
     priceTrackingRepository?: PriceTrackingRepository
   ) {
     super('ScanService');
+
+    // Validate required dependencies
+    if (!stockRepository) {
+      throw new Error('StockRepository is required');
+    }
+    if (!analysisService) {
+      throw new Error('StockAnalysisService is required');
+    }
+    if (!scraperService) {
+      throw new Error('ScraperService is required');
+    }
+    if (!stockDataService) {
+      throw new Error('StockDataService is required');
+    }
+    if (!config) {
+      throw new Error('AppConfig is required');
+    }
+
     this.stockRepository = stockRepository;
     this.priceTrackingRepository = priceTrackingRepository;
     this.analysisService = analysisService;
@@ -247,14 +265,113 @@ export class ScanService extends BaseService {
 
             if (analysisResult.qualified) {
               qualifiedCount++;
+
+              // Get the highest price of the current day as entry price
+              const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+              const todayBar = dailyBars.find((bar: any) => {
+                const barDate = typeof bar.date === 'string' ? bar.date : bar.date.toISOString().split('T')[0];
+                return barDate === today;
+              });
+
+              // Entry price is today's high (the highest price of the selection day)
+              const entryPrice = todayBar ? todayBar.high : analysisResult.currentPrice || 0;
+              const currentPrice = analysisResult.currentPrice || (todayBar ? todayBar.close : entryPrice);
+              
+              // Selection date is today (when stock is being selected)
+              const selectionDateObj = new Date();
+              selectionDateObj.setHours(0, 0, 0, 0);
+              const selectionDateStr = selectionDateObj.toISOString().split('T')[0]; // YYYY-MM-DD
+
+              // Perform price analysis for buy initiation and price ranges
+              // Use the dailyBars data that was already fetched during scanning
+              let buyInitiated = false;
+              let highestPriceAfterSelection: number | undefined = undefined;
+              let lowestPriceAfterSelection: number | undefined = undefined;
+              let priceAnalysisPeriod = 0;
+
+              try {
+                // Filter prices AFTER selection date (including today)
+                // This uses the dailyBars data already fetched during scanning
+                const pricesAfterSelection = dailyBars.filter(bar => {
+                  const barDateStr = typeof bar.date === 'string' 
+                    ? bar.date.split('T')[0] 
+                    : new Date(bar.date).toISOString().split('T')[0];
+                  return barDateStr >= selectionDateStr;
+                });
+
+                if (pricesAfterSelection.length > 0) {
+                  // Check if ANY price after selection reached or exceeded entry price
+                  // Check both high and close prices
+                  buyInitiated = pricesAfterSelection.some(bar => 
+                    bar.high >= entryPrice || bar.close >= entryPrice
+                  );
+
+                  // ALWAYS calculate highest and lowest prices after selection (regardless of buy initiation)
+                  const allPrices = pricesAfterSelection.flatMap(bar => [bar.high, bar.low, bar.close, bar.open]);
+                  if (allPrices.length > 0) {
+                    highestPriceAfterSelection = Math.max(...allPrices);
+                    lowestPriceAfterSelection = Math.min(...allPrices);
+                  } else {
+                    // Fallback to current price if no prices found
+                    highestPriceAfterSelection = currentPrice;
+                    lowestPriceAfterSelection = currentPrice;
+                  }
+
+                  // Calculate analysis period (days since selection)
+                  // For same-day selection, it's 1 day (today)
+                  const todayDate = new Date();
+                  todayDate.setHours(0, 0, 0, 0);
+                  const daysDiff = Math.ceil((todayDate.getTime() - selectionDateObj.getTime()) / (1000 * 60 * 60 * 24));
+                  priceAnalysisPeriod = Math.max(1, daysDiff);
+                  
+                  this.logger.debug(`📊 ${stock.symbol}: Found ${pricesAfterSelection.length} bars after selection, period=${priceAnalysisPeriod} days`);
+                } else {
+                  // No data after selection date - use today's bar if available
+                  if (todayBar) {
+                    buyInitiated = currentPrice >= entryPrice || todayBar.high >= entryPrice;
+                    highestPriceAfterSelection = Math.max(todayBar.high, todayBar.low, currentPrice);
+                    lowestPriceAfterSelection = Math.min(todayBar.high, todayBar.low, currentPrice);
+                  } else {
+                    buyInitiated = currentPrice >= entryPrice;
+                    highestPriceAfterSelection = currentPrice;
+                    lowestPriceAfterSelection = currentPrice;
+                  }
+                  priceAnalysisPeriod = 1;
+                  this.logger.debug(`📊 ${stock.symbol}: No bars after selection, using today's data or current price`);
+                }
+                
+                this.logger.info(`📊 Price analysis for ${stock.symbol}: entry=₹${entryPrice.toFixed(2)}, current=₹${currentPrice.toFixed(2)}, buyInitiated=${buyInitiated}, high=${highestPriceAfterSelection?.toFixed(2) || 'N/A'}, low=${lowestPriceAfterSelection?.toFixed(2) || 'N/A'}, period=${priceAnalysisPeriod} days`);
+                
+              } catch (error) {
+                this.logger.warn(`⚠️ Could not perform price analysis for ${stock.symbol}:`, error);
+                // Default: check if current price >= entry
+                buyInitiated = currentPrice >= entryPrice;
+                // Always set highest/lowest prices (use current price as fallback)
+                highestPriceAfterSelection = currentPrice;
+                lowestPriceAfterSelection = currentPrice;
+                priceAnalysisPeriod = 1;
+              }
+
+              // Ensure all values are set (never undefined)
+              const finalBuyInitiated = buyInitiated !== undefined ? buyInitiated : false;
+              const finalHighestPrice = highestPriceAfterSelection !== undefined ? highestPriceAfterSelection : currentPrice;
+              const finalLowestPrice = lowestPriceAfterSelection !== undefined ? lowestPriceAfterSelection : currentPrice;
+              const finalPeriod = priceAnalysisPeriod > 0 ? priceAnalysisPeriod : 1;
+
+              this.logger.info(`💾 Saving analysis for ${stock.symbol}: buyInitiated=${finalBuyInitiated}, high=₹${finalHighestPrice.toFixed(2)}, low=₹${finalLowestPrice.toFixed(2)}, period=${finalPeriod} days`);
+
               await this.stockRepository.insertSelectedStock(stock.id, scanRecord.id, {
-                entryPrice: analysisResult.currentPrice || 0,
-                stopLoss: (analysisResult.currentPrice || 0) * 0.95,
-                target1: (analysisResult.currentPrice || 0) * 1.15,
-                target2: (analysisResult.currentPrice || 0) * 1.30,
-                target3: (analysisResult.currentPrice || 0) * 1.50,
+                entryPrice: entryPrice,
+                stopLoss: entryPrice * 0.95,
+                target1: entryPrice * 1.15,
+                target2: entryPrice * 1.30,
+                target3: entryPrice * 1.50,
                 positionSize: 100,
-                positionValue: (analysisResult.currentPrice || 0) * 100
+                positionValue: entryPrice * 100,
+                buyInitiated: finalBuyInitiated,
+                highestPriceAfterSelection: finalHighestPrice,
+                lowestPriceAfterSelection: finalLowestPrice,
+                priceAnalysisPeriod: finalPeriod
               });
             }
           } catch (error) {
@@ -404,30 +521,106 @@ export class ScanService extends BaseService {
     return await this.stockRepository.getAnalysisStatistics();
   }
 
-  async analyzeSingleStock(symbol: string, _lookbackDays: number = 120, _includeIntraday: boolean = false): Promise<any> {
-    // Mock analysis for now
-    return {
-      symbol,
-      qualified: Math.random() > 0.5,
-      score: Math.floor(Math.random() * 100),
-      reason: 'Mock analysis result',
-      details: {
-        consolidation: { pass: true, status: 'consolidated' },
-        higherLow: { pass: true, status: 'higher_low' },
-        volumePump: { pass: false, status: 'no_volume_pump' },
-        bearSqueeze: { pass: true, status: 'bear_squeeze' }
+  async analyzeSingleStock(symbol: string, lookbackDays: number = 120, _includeIntraday: boolean = false): Promise<any> {
+    try {
+      this.logger.info(`🔍 Starting real analysis for ${symbol} with ${lookbackDays} days of data`);
+
+      // Fetch real historical data
+      const dailyBars = await this.stockDataService.fetchDailyBars(symbol, lookbackDays);
+
+      if (dailyBars.length < 80) {
+        return {
+          symbol,
+          qualified: false,
+          score: 0,
+          reason: `Insufficient data: Only ${dailyBars.length} days available, need at least 80 days`,
+          details: {
+            consolidation: { pass: false, status: 'insufficient_data' },
+            higherLow: { pass: false, status: 'insufficient_data' },
+            volumePump: { pass: false, status: 'insufficient_data' },
+            bearSqueeze: { pass: false, status: 'insufficient_data' }
+          }
+        };
       }
-    };
+
+      // Perform real technical analysis
+      const analysisResult = await this.analysisService.analyzeStock({
+        symbol,
+        dailyBars: dailyBars,
+        intradayBars: undefined
+      });
+
+      this.logger.success(`✅ Completed real analysis for ${symbol}: ${analysisResult.qualified ? 'QUALIFIED' : 'REJECTED'}`);
+
+      return {
+        symbol,
+        qualified: analysisResult.qualified,
+        score: analysisResult.score,
+        reason: analysisResult.reason,
+        currentPrice: analysisResult.currentPrice,
+        ema10: analysisResult.ema10,
+        ema20: analysisResult.ema20,
+        details: analysisResult.details
+      };
+    } catch (error) {
+      this.logger.error(`❌ Failed to analyze ${symbol}:`, error);
+      return {
+        symbol,
+        qualified: false,
+        score: 0,
+        reason: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        details: {
+          consolidation: { pass: false, status: 'error' },
+          higherLow: { pass: false, status: 'error' },
+          volumePump: { pass: false, status: 'error' },
+          bearSqueeze: { pass: false, status: 'error' }
+        }
+      };
+    }
   }
 
   async getStockQuote(symbol: string): Promise<any> {
-    // Mock quote for now
-    return {
-      symbol,
-      price: 100 + Math.random() * 1000,
-      change: (Math.random() - 0.5) * 10,
-      changePercent: (Math.random() - 0.5) * 5
-    };
+    try {
+      this.logger.info(`📊 Fetching real-time quote for ${symbol}`);
+
+      // Fetch current price from Yahoo Finance
+      const currentPrice = await this.stockDataService.fetchCurrentPrice(symbol);
+
+      if (currentPrice === null) {
+        throw new Error(`Unable to fetch quote for ${symbol}`);
+      }
+
+      // For change calculation, we need previous close price
+      // Fetch 2 days of data to get yesterday's close
+      const dailyBars = await this.stockDataService.fetchDailyBars(symbol, 2);
+
+      let change = 0;
+      let changePercent = 0;
+
+      if (dailyBars.length >= 2) {
+        // Sort by date (most recent first)
+        dailyBars.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        const yesterdayClose = dailyBars[1]?.close || dailyBars[0]?.close;
+        if (yesterdayClose && yesterdayClose > 0) {
+          change = currentPrice - yesterdayClose;
+          changePercent = (change / yesterdayClose) * 100;
+        }
+      }
+
+      this.logger.success(`✅ Fetched real quote for ${symbol}: ₹${currentPrice.toFixed(2)}`);
+
+      return {
+        symbol,
+        price: currentPrice,
+        change: change,
+        changePercent: changePercent,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      this.logger.error(`❌ Failed to fetch quote for ${symbol}:`, error);
+      throw error;
+    }
   }
 
   async getRejectedStocksFromLatestScan(page: number = 1, limit: number = 10): Promise<{ stocks: any[], total: number }> {
@@ -448,14 +641,40 @@ export class ScanService extends BaseService {
     };
   }
 
-  async getRecentLogs(_lines: number = 100): Promise<string[]> {
-    // Mock logs for now
-    return [
-      '2024-01-01 10:00:00 INFO [ScanService] Scan started',
-      '2024-01-01 10:01:00 INFO [ScanService] Scraped 50 stocks',
-      '2024-01-01 10:02:00 INFO [ScanService] Analysis completed',
-      '2024-01-01 10:03:00 INFO [ScanService] Scan finished'
-    ];
+  async getRecentLogs(lines: number = 100): Promise<string[]> {
+    try {
+      this.logger.info(`📋 Fetching recent logs (last ${lines} entries)`);
+
+      // Get recent scan history and format as logs
+      const scans = await this.stockRepository.getScanHistory(Math.min(lines, 50));
+
+      const logEntries: string[] = [];
+
+      // Add system status logs
+      logEntries.push(`${new Date().toISOString()} INFO [System] System status check`);
+      logEntries.push(`${new Date().toISOString()} INFO [ScanService] Log retrieval requested`);
+
+      // Add scan history as logs
+      scans.forEach((scan: any) => {
+        const scanDate = new Date(scan.scanDate).toISOString();
+        logEntries.push(`${scanDate} INFO [ScanService] Scan completed - ${scan.stocksPassed}/${scan.totalStocksScraped} stocks qualified`);
+        logEntries.push(`${scanDate} INFO [ScanService] Analysis duration: ${scan.scanDurationSeconds}s`);
+      });
+
+      // Add current status logs
+      const status = await this.getScanStatus();
+      logEntries.push(`${new Date().toISOString()} INFO [ScanService] Current status: ${status.running ? 'Running' : 'Idle'}`);
+      logEntries.push(`${new Date().toISOString()} INFO [ScanService] Total qualified stocks: ${status.qualifiedStocks}`);
+
+      // Return the most recent entries (up to requested lines)
+      return logEntries.slice(-lines);
+    } catch (error) {
+      this.logger.error('Failed to fetch logs:', error);
+      return [
+        `${new Date().toISOString()} ERROR [ScanService] Failed to retrieve logs: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `${new Date().toISOString()} INFO [System] System operational`
+      ];
+    }
   }
 
   /**
@@ -489,6 +708,10 @@ export class ScanService extends BaseService {
       positionValue: number;
       targetsHit: string[];
       stoplossHit: boolean;
+      buyInitiated: boolean;
+      highestPriceAfterSelection?: number;
+      lowestPriceAfterSelection?: number;
+      priceAnalysisPeriod: number; // days since selection
     }>;
   }> {
     try {
@@ -525,13 +748,14 @@ export class ScanService extends BaseService {
         target3: 0
       };
 
-      // Process each stock
+      // Process each stock - use cached analysis data
       for (const stock of allStocks) {
         const selectedStockId = stock.selected_stock_id;
         const entryPrice = Number(stock.entry_price) || 0;
         const stopLoss = Number(stock.stop_loss) || 0;
         const positionSize = Number(stock.position_size) || 0;
-        
+        const selectionDate = stock.scan_date || new Date().toISOString();
+
         // Get latest price from price tracking
         let currentPrice = Number(stock.current_price) || entryPrice;
         if (this.priceTrackingRepository && selectedStockId) {
@@ -542,6 +766,46 @@ export class ScanService extends BaseService {
             }
           } catch (error) {
             this.logger.debug(`Could not get latest price for ${stock.symbol}, using current_price`);
+          }
+        }
+
+        // Use cached analysis data from database (fetched during scanning)
+        // This uses the data that was calculated and saved during the scan process
+        let buyInitiated = stock.buy_initiated !== undefined && stock.buy_initiated !== null 
+          ? Boolean(stock.buy_initiated) 
+          : false;
+        
+        let highestPriceAfterSelection = stock.highest_price_after_selection !== undefined && stock.highest_price_after_selection !== null
+          ? Number(stock.highest_price_after_selection)
+          : undefined;
+          
+        let lowestPriceAfterSelection = stock.lowest_price_after_selection !== undefined && stock.lowest_price_after_selection !== null
+          ? Number(stock.lowest_price_after_selection)
+          : undefined;
+          
+        let priceAnalysisPeriod = stock.price_analysis_period !== undefined && stock.price_analysis_period !== null
+          ? Number(stock.price_analysis_period)
+          : 0;
+
+        // If data seems invalid (0 period or missing prices), use current price as fallback
+        if (priceAnalysisPeriod === 0 || (highestPriceAfterSelection === undefined && lowestPriceAfterSelection === undefined)) {
+          // Data might not be in database yet - use current price as fallback
+          if (highestPriceAfterSelection === undefined) {
+            highestPriceAfterSelection = currentPrice;
+          }
+          if (lowestPriceAfterSelection === undefined) {
+            lowestPriceAfterSelection = currentPrice;
+          }
+          if (priceAnalysisPeriod === 0) {
+            // Calculate days since selection
+            const selectionDateObj = new Date(selectionDate);
+            const todayDate = new Date();
+            const daysDiff = Math.ceil((todayDate.getTime() - selectionDateObj.getTime()) / (1000 * 60 * 60 * 24));
+            priceAnalysisPeriod = Math.max(1, daysDiff);
+          }
+          // Recalculate buy initiation if needed
+          if (stock.buy_initiated === undefined || stock.buy_initiated === null) {
+            buyInitiated = currentPrice >= entryPrice;
           }
         }
 
@@ -570,7 +834,7 @@ export class ScanService extends BaseService {
         const priceMovement = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
         const positionValue = currentPrice * positionSize;
         const pnl = (currentPrice - entryPrice) * positionSize;
-        
+
         totalValue += positionValue;
         totalPnL += pnl;
 
@@ -590,7 +854,7 @@ export class ScanService extends BaseService {
           entryPrice: Number(entryPrice),
           currentPrice: Number(currentPrice),
           priceMovement: Number(priceMovement.toFixed(2)),
-          selectionDate: stock.scan_date || new Date().toISOString(),
+          selectionDate: selectionDate,
           stopLoss: Number(stopLoss),
           target1: Number(stock.target_1) || 0,
           target2: Number(stock.target_2) || 0,
@@ -598,7 +862,11 @@ export class ScanService extends BaseService {
           positionSize: Number(positionSize),
           positionValue: Number(positionValue.toFixed(2)),
           targetsHit: targetsHitList,
-          stoplossHit
+          stoplossHit,
+          buyInitiated,
+          highestPriceAfterSelection,
+          lowestPriceAfterSelection,
+          priceAnalysisPeriod
         });
       }
 

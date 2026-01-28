@@ -10,7 +10,7 @@ export function createRoutes(services: any, _repositories: any, pool: any): Rout
 
   // Initialize controllers
   const scanController = new ScanController(services.scanService, services.priceTrackingService);
-  const portfolioController = new PortfolioController();
+  const portfolioController = new PortfolioController(services.scanService);
   const healthController = new HealthController(pool);
 
   // Health check routes

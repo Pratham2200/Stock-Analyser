@@ -11,7 +11,8 @@
     "dev:client": "cd client && npm run dev",
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:client\"",
     "db:setup": "psql -d stock_analysis -f database/schema.sql",
-    "db:migrate": "psql -d stock_analysis -f database/schema.sql"
+    "db:migrate": "psql -d stock_analysis -f database/schema.sql",
+    "backfill:price-analysis": "ts-node scripts/backfill-price-analysis.ts"
   },
   "author": "Your Name",
   "license": "MIT",

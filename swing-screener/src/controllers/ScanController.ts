@@ -130,64 +130,176 @@ export class ScanController extends BaseController {
 
   getStatistics = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/statistics');
-    
+
     try {
-      // Coming soon - return placeholder data
-      this.success(res, {
-        message: "Statistics feature coming soon!",
-        status: "development",
-        features: ["Advanced analytics", "Performance metrics", "Risk analysis"],
-        estimatedRelease: "Q1 2025"
-      });
+      // Get real statistics from the scan service with error handling
+      let analysisStats = null;
+      try {
+        analysisStats = await this.scanService.getAnalysisStatistics();
+      } catch (error) {
+        this.logger.warn('Failed to get analysis statistics:', error);
+        analysisStats = {
+          total_analysis: 0,
+          qualified_count: 0,
+          rejected_count: 0,
+          avg_duration: 0,
+          avg_score: 0,
+          consolidation_failures: 0,
+          higher_low_failures: 0,
+          volume_failures: 0,
+          bear_squeeze_failures: 0
+        };
+      }
+
+      // Get scan status for additional metrics
+      let scanStatus = null;
+      try {
+        scanStatus = await this.scanService.getScanStatus();
+      } catch (error) {
+        this.logger.warn('Failed to get scan status:', error);
+        scanStatus = {
+          running: false,
+          totalStocks: 0,
+          qualifiedStocks: 0,
+          analyzedStocks: 0,
+          successRate: 0,
+          lastScan: null,
+          scanDuration: 0,
+          nextScan: null,
+          cronTime: '0 9 * * 1-5',
+          timezone: 'Asia/Kolkata'
+        };
+      }
+
+      // Get selected stocks summary for portfolio metrics
+      let portfolioSummary = null;
+      try {
+        portfolioSummary = await this.scanService.getSelectedStocksSummary();
+      } catch (error) {
+        this.logger.warn('Failed to get portfolio summary:', error);
+        portfolioSummary = {
+          totalStocks: 0,
+          totalValue: 0,
+          totalPnL: 0,
+          averagePnL: 0,
+          stocksInProfit: 0,
+          stocksInLoss: 0,
+          stocksAtStopLoss: 0,
+          targetsHit: { target1: 0, target2: 0, target3: 0 },
+          stocks: []
+        };
+      }
+
+      const statistics = {
+        // Scan performance metrics
+        totalScans: scanStatus.lastScan ? 1 : 0,
+        lastScanDate: scanStatus.lastScan,
+        totalStocksAnalyzed: analysisStats.total_analysis || 0,
+        qualifiedStocks: analysisStats.qualified_count || 0,
+        rejectedStocks: analysisStats.rejected_count || 0,
+        successRate: analysisStats.total_analysis > 0
+          ? ((analysisStats.qualified_count || 0) / analysisStats.total_analysis) * 100
+          : 0,
+
+        // Failure analysis
+        failureReasons: {
+          consolidationFailures: analysisStats.consolidation_failures || 0,
+          higherLowFailures: analysisStats.higher_low_failures || 0,
+          volumeFailures: analysisStats.volume_failures || 0,
+          bearSqueezeFailures: analysisStats.bear_squeeze_failures || 0
+        },
+
+        // Performance metrics
+        averageAnalysisDuration: analysisStats.avg_duration || 0,
+        averageScore: analysisStats.avg_score || 0,
+
+        // Portfolio metrics
+        portfolioValue: portfolioSummary.totalValue || 0,
+        totalPnL: portfolioSummary.totalPnL || 0,
+        totalPnLPercent: portfolioSummary.totalValue > 0 ? (portfolioSummary.totalPnL / portfolioSummary.totalValue) * 100 : 0,
+        activePositions: portfolioSummary.totalStocks || 0,
+
+        // System health
+        lastUpdated: new Date().toISOString(),
+        status: "operational"
+      };
+
+      this.success(res, statistics);
     } catch (error) {
+      this.logger.error('Error fetching statistics:', error);
       this.error(res, (error as Error).message, 500);
     }
   });
 
   analyzeStock = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'POST', '/api/analyze-stock');
-    
+
     try {
-      // Coming soon - return placeholder data
-      this.success(res, {
-        message: "Individual stock analysis coming soon!",
-        status: "development",
-        features: ["Real-time analysis", "Technical indicators", "Risk assessment"],
-        estimatedRelease: "Q1 2025"
-      });
+      const { symbol, lookbackDays = 120, includeIntraday = false } = req.body;
+
+      if (!symbol) {
+        return this.error(res, 'Symbol is required', 400);
+      }
+
+      // Validate symbol format
+      if (typeof symbol !== 'string' || symbol.trim().length === 0) {
+        return this.error(res, 'Invalid symbol format', 400);
+      }
+
+      // Perform real analysis
+      const analysisResult = await this.scanService.analyzeSingleStock(
+        symbol.trim().toUpperCase(),
+        Math.min(Math.max(lookbackDays, 80), 365), // Limit between 80-365 days
+        includeIntraday
+      );
+
+      this.success(res, analysisResult);
     } catch (error) {
-      this.error(res, (error as Error).message, 400);
+      this.logger.error('Error analyzing stock:', error);
+      this.error(res, (error as Error).message, 500);
     }
   });
 
   getQuote = this.handleAsync(async (req: Request, res: Response) => {
-    this.logRequest(req, 'GET', `/api/quote/${req.params.symbol}`);
-    
+    const { symbol } = req.params;
+    this.logRequest(req, 'GET', `/api/quote/${symbol}`);
+
     try {
-      // Coming soon - return placeholder data
-      this.success(res, {
-        message: "Real-time quotes coming soon!",
-        status: "development",
-        features: ["Live price updates", "Market data", "Price alerts"],
-        estimatedRelease: "Q1 2025"
-      });
+      if (!symbol) {
+        return this.error(res, 'Symbol is required', 400);
+      }
+
+      // Validate symbol format
+      if (typeof symbol !== 'string' || symbol.trim().length === 0) {
+        return this.error(res, 'Invalid symbol format', 400);
+      }
+
+      // Get real-time quote
+      const quote = await this.scanService.getStockQuote(symbol.trim().toUpperCase());
+
+      this.success(res, quote);
     } catch (error) {
-      this.error(res, (error as Error).message, 500);
+      this.logger.error(`Error fetching quote for ${req.params.symbol}:`, error);
+      this.error(res, `Failed to fetch quote: ${(error as Error).message}`, 500);
     }
   });
 
   getLogs = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/logs');
-    
+
     try {
-      // Coming soon - return placeholder data
+      const lines = Math.min(parseInt(req.query.lines as string) || 100, 500); // Max 500 lines
+
+      // Get real logs from the scan service
+      const logs = await this.scanService.getRecentLogs(lines);
+
       this.success(res, {
-        message: "Advanced logging coming soon!",
-        status: "development",
-        features: ["Real-time logs", "Error tracking", "Performance monitoring"],
-        estimatedRelease: "Q1 2025"
+        logs,
+        count: logs.length,
+        timestamp: new Date().toISOString()
       });
     } catch (error) {
+      this.logger.error('Error fetching logs:', error);
       this.error(res, (error as Error).message, 500);
     }
   });
@@ -261,12 +373,29 @@ export class ScanController extends BaseController {
 
   getSelectedStocksSummary = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/selected/summary');
-    
+
     try {
       const summary = await this.scanService.getSelectedStocksSummary();
       this.success(res, summary);
     } catch (error) {
-      this.error(res, (error as Error).message, 500);
+      this.logger.error('Error getting selected stocks summary:', error);
+      // Return default empty summary instead of error
+      const defaultSummary = {
+        totalStocks: 0,
+        totalValue: 0,
+        totalPnL: 0,
+        averagePnL: 0,
+        stocksInProfit: 0,
+        stocksInLoss: 0,
+        stocksAtStopLoss: 0,
+        targetsHit: {
+          target1: 0,
+          target2: 0,
+          target3: 0
+        },
+        stocks: []
+      };
+      this.success(res, defaultSummary);
     }
   });
 }

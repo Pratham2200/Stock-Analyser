@@ -57,6 +57,14 @@ interface SelectedStock {
   ema10: number;
   ema20: number;
   scan_date: string;
+  buyInitiated?: boolean;
+  highestPriceAfterSelection?: number | null;
+  lowestPriceAfterSelection?: number | null;
+  priceAnalysisPeriod?: number;
+  buy_initiated?: boolean; // Database field name
+  highest_price_after_selection?: number | null; // Database field name
+  lowest_price_after_selection?: number | null; // Database field name
+  price_analysis_period?: number; // Database field name
 }
 
 interface SelectedStocksProps {
@@ -302,7 +310,10 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
             startIcon={<Assessment />}
             onClick={() => {
               setSummaryOpen(true);
-              fetchSummary();
+              // Only fetch summary if we don't already have it
+              if (!summary && !summaryLoading) {
+                fetchSummary();
+              }
             }}
             size={isMobile ? 'small' : 'medium'}
           >
@@ -784,8 +795,13 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
               <Divider sx={{ my: 3 }} />
 
               {/* Individual Stock Details */}
-              <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+              <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>
                 Individual Stock Details
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Buy initiation is determined by checking if the stock price reached above the entry price
+                (day's high when selected) at any point after the selection date.
+                When buy is not initiated, highest and lowest prices since selection are shown.
               </Typography>
               <TableContainer component={Paper} sx={{ maxHeight: 500 }}>
                 <Table stickyHeader size="small">
@@ -796,59 +812,119 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                       <TableCell align="right"><strong>Entry Price</strong></TableCell>
                       <TableCell align="right"><strong>Current Price</strong></TableCell>
                       <TableCell align="right"><strong>% Move</strong></TableCell>
-                      <TableCell align="right"><strong>Position Value</strong></TableCell>
-                      <TableCell><strong>Selection Date</strong></TableCell>
-                      <TableCell><strong>Status</strong></TableCell>
+                      <TableCell align="right"><strong>Status</strong></TableCell>
+                      <TableCell align="right"><strong>Highest (After Selection)</strong></TableCell>
+                      <TableCell align="right"><strong>Lowest (After Selection)</strong></TableCell>
+                      <TableCell><strong>Details</strong></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {summary.stocks.map((stock: any, index: number) => (
-                      <TableRow 
-                        key={index}
-                        sx={{
-                          backgroundColor: stock.stoplossHit ? 'error.light' : stock.priceMovement >= 0 ? 'success.light' : 'inherit',
-                          '&:hover': { backgroundColor: 'action.hover' }
-                        }}
-                      >
-                        <TableCell><strong>{stock.symbol}</strong></TableCell>
-                        <TableCell>{stock.name}</TableCell>
-                        <TableCell align="right">₹{safeToFixed(stock.entryPrice)}</TableCell>
-                        <TableCell align="right">₹{safeToFixed(stock.currentPrice)}</TableCell>
-                        <TableCell align="right">
-                          <Chip
-                            label={`${safeNumber(stock.priceMovement) >= 0 ? '+' : ''}${safeToFixed(stock.priceMovement)}%`}
-                            color={safeNumber(stock.priceMovement) >= 0 ? 'success' : 'error'}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell align="right">₹{safeNumber(stock.positionValue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                        <TableCell>{new Date(stock.selectionDate).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                            {stock.targetsHit && Array.isArray(stock.targetsHit) && stock.targetsHit.map((target: string) => (
+                    {summary.stocks.map((stock: any, index: number) => {
+                      // Use server-calculated buy initiation status based on price history after selection date
+                      // Handle backward compatibility for when these fields don't exist yet
+                      // Check both camelCase (processed) and snake_case (raw from DB) field names
+                      const buyInitiated = (stock.buyInitiated !== undefined ? stock.buyInitiated :
+                                           stock.buy_initiated !== undefined ? stock.buy_initiated : false);
+
+                      // Use server-calculated highest/lowest prices after selection date
+                      const highestAfterEntry = (stock.highestPriceAfterSelection !== undefined && stock.highestPriceAfterSelection !== null ? stock.highestPriceAfterSelection :
+                                                 stock.highest_price_after_selection !== undefined && stock.highest_price_after_selection !== null ? stock.highest_price_after_selection : 0);
+                      const lowestAfterEntry = (stock.lowestPriceAfterSelection !== undefined && stock.lowestPriceAfterSelection !== null ? stock.lowestPriceAfterSelection :
+                                                stock.lowest_price_after_selection !== undefined && stock.lowest_price_after_selection !== null ? stock.lowest_price_after_selection : 0);
+
+                      return (
+                        <TableRow
+                          key={index}
+                          sx={{
+                            '&:hover': { backgroundColor: 'action.hover' }
+                          }}
+                        >
+                          <TableCell><strong>{stock.symbol}</strong></TableCell>
+                          <TableCell>{stock.name}</TableCell>
+                          <TableCell align="right">₹{safeToFixed(stock.entryPrice)}</TableCell>
+                          <TableCell align="right">₹{safeToFixed(stock.currentPrice)}</TableCell>
+                          <TableCell align="right">
+                            <Chip
+                              label={`${safeNumber(stock.priceMovement) >= 0 ? '+' : ''}${safeToFixed(stock.priceMovement)}%`}
+                              color={safeNumber(stock.priceMovement) >= 0 ? 'success' : 'error'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell align="right">
+                            {buyInitiated ? (
                               <Chip
-                                key={target}
-                                label={target.toUpperCase()}
+                                label="Buy Initiated"
                                 color="success"
                                 size="small"
-                                icon={<CheckCircle />}
+                                variant="outlined"
                               />
-                            ))}
-                            {stock.stoplossHit && (
+                            ) : (
                               <Chip
-                                label="SL"
-                                color="error"
+                                label="Buy Not Initiated"
+                                color="warning"
                                 size="small"
-                                icon={<Cancel />}
+                                variant="outlined"
                               />
                             )}
-                            {!stock.stoplossHit && (!stock.targetsHit || !Array.isArray(stock.targetsHit) || stock.targetsHit.length === 0) && (
-                              <Chip label="Active" color="default" size="small" variant="outlined" />
+                          </TableCell>
+                          <TableCell align="right">
+                            {highestAfterEntry > 0 ? `₹${safeToFixed(highestAfterEntry)}` : 'N/A'}
+                          </TableCell>
+                          <TableCell align="right">
+                            {lowestAfterEntry > 0 ? `₹${safeToFixed(lowestAfterEntry)}` : 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            {buyInitiated ? (
+                              <Box>
+                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.5 }}>
+                                  <Chip
+                                    label={`Buy Initiated (${(stock.priceAnalysisPeriod || stock.price_analysis_period || 0)} days)`}
+                                    color="success"
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                  {stock.targetsHit && Array.isArray(stock.targetsHit) && stock.targetsHit.map((target: string) => (
+                                    <Chip
+                                      key={target}
+                                      label={target.toUpperCase()}
+                                      color="success"
+                                      size="small"
+                                      icon={<CheckCircle />}
+                                    />
+                                  ))}
+                                  {stock.stoplossHit && (
+                                    <Chip
+                                      label="SL"
+                                      color="error"
+                                      size="small"
+                                      icon={<Cancel />}
+                                    />
+                                  )}
+                                  {!stock.stoplossHit && (!stock.targetsHit || !Array.isArray(stock.targetsHit) || stock.targetsHit.length === 0) && (
+                                    <Chip label="Active" color="default" size="small" variant="outlined" />
+                                  )}
+                                </Box>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Highest: ₹{safeToFixed(highestAfterEntry)} | Lowest: ₹{safeToFixed(lowestAfterEntry)}
+                                </Typography>
+                              </Box>
+                            ) : (
+                              <Box>
+                                <Chip
+                                  label={`Buy Not Initiated (${(stock.priceAnalysisPeriod || stock.price_analysis_period || 0)} days)`}
+                                  color="warning"
+                                  size="small"
+                                  variant="outlined"
+                                />
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Highest: ₹{safeToFixed(highestAfterEntry)} | Lowest: ₹{safeToFixed(lowestAfterEntry)}
+                                </Typography>
+                              </Box>
                             )}
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>

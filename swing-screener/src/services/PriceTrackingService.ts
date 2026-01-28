@@ -25,6 +25,15 @@ export class PriceTrackingService extends BaseService {
     priceTrackingRepository: PriceTrackingRepository
   ) {
     super('PriceTrackingService');
+
+    // Validate required dependencies
+    if (!stockDataService) {
+      throw new Error('StockDataService is required');
+    }
+    if (!priceTrackingRepository) {
+      throw new Error('PriceTrackingRepository is required');
+    }
+
     this.stockDataService = stockDataService;
     this.priceTrackingRepository = priceTrackingRepository;
   }
