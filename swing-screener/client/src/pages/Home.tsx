@@ -95,89 +95,29 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
   const [scanning, setScanning] = useState<boolean>(false);
   const [scanProgress, setScanProgress] = useState<number>(0);
 
-  // Mock data for demonstration
-  const mockScanResults: ScanResult[] = [
-    {
-      id: '1',
-      symbol: 'RELIANCE',
-      name: 'Reliance Industries Ltd',
-      price: 2456.50,
-      change: 12.30,
-      changePercent: 0.50,
-      volume: 1250000,
-      marketCap: '16.5L Cr',
-      sector: 'Energy',
-      score: 95,
-      status: 'qualified',
-      timestamp: new Date().toISOString()
-    },
-    {
-      id: '2',
-      symbol: 'TCS',
-      name: 'Tata Consultancy Services',
-      price: 3850.75,
-      change: -8.50,
-      changePercent: -0.22,
-      volume: 850000,
-      marketCap: '14.2L Cr',
-      sector: 'IT',
-      score: 88,
-      status: 'qualified',
-      timestamp: new Date().toISOString()
-    },
-    {
-      id: '3',
-      symbol: 'HDFC',
-      name: 'HDFC Bank Ltd',
-      price: 1680.25,
-      change: 5.75,
-      changePercent: 0.34,
-      volume: 2100000,
-      marketCap: '12.8L Cr',
-      sector: 'Banking',
-      score: 92,
-      status: 'qualified',
-      timestamp: new Date().toISOString()
-    },
-    {
-      id: '4',
-      symbol: 'INFY',
-      name: 'Infosys Ltd',
-      price: 1520.80,
-      change: -15.20,
-      changePercent: -0.99,
-      volume: 950000,
-      marketCap: '6.8L Cr',
-      sector: 'IT',
-      score: 45,
-      status: 'rejected',
-      reason: 'Failed volume criteria',
-      timestamp: new Date().toISOString()
-    }
-  ];
+  // Scan results are now fetched dynamically from the API
 
   useEffect(() => {
     api.get('status')
       .then(res => setStatus(res.data))
       .catch(err => {
         console.error('Status fetch error:', err);
-        // Use mock data for demonstration
+        // Show empty state instead of mock data
         setStatus({
-          uptime: 3600,
-          lastScan: new Date().toISOString(),
-          totalStocks: 150,
-          qualifiedStocks: 12,
-          successRate: 8.0,
-          cronTime: '6:00 PM',
+          uptime: 0,
+          lastScan: '',
+          totalStocks: 0,
+          qualifiedStocks: 0,
+          successRate: 0,
+          cronTime: 'N/A',
           timezone: 'Asia/Kolkata',
           running: false,
-          sheetUrl: 'https://docs.google.com/spreadsheets/d/example'
+          sheetUrl: ''
         });
-        setScanResults(mockScanResults);
-        setSnack({ 
-          open: true, 
-          msg: `Using demo data - ${(err as any).response?.data?.error || (err as Error).message}`, 
-          severity: 'warning' 
+        setSnack({
+          open: true,
+          msg: `Failed to connect to server: ${(err as any).response?.data?.error || (err as Error).message}`,
+          severity: 'error'
         });
       });
   }, [setSnack]);
@@ -185,38 +125,71 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
   const onManualScan = async (): Promise<void> => {
     setManualScanLoading(true);
     setScanning(true);
-    setScanProgress(0);
-    
-    try {
-      // Simulate scan progress
-      const progressInterval = setInterval(() => {
-        setScanProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(progressInterval);
-            setScanning(false);
-            setScanResults(mockScanResults);
-            setSnack({ 
-              open: true, 
-              msg: `Analysis complete! ${mockScanResults.filter(r => r.status === 'qualified').length} stocks qualified.`, 
-              severity: 'success' 
-            });
-            return 100;
-          }
-          return prev + Math.random() * 15;
-        });
-      }, 200);
+    setScanProgress(10);
 
+    try {
+      // Call the REAL backend scan API
       const res = await api.post('start-scan');
-      setSnack({ open: true, msg: `Scan complete. ${res.data.count ?? 0} stocks found.`, severity: 'success' });
-      
+
+      setScanProgress(80);
+
+      // Fetch actual scan results from the backend
+      const [qualifiedRes, rejectedRes] = await Promise.all([
+        api.get('selected'),
+        api.get('rejected')
+      ]);
+
+      // Transform backend data to match our ScanResult interface
+      const qualifiedStocksData: ScanResult[] = (qualifiedRes.data.data || []).map((stock: any) => ({
+        id: stock.id?.toString() || stock.symbol,
+        symbol: stock.symbol,
+        name: stock.name || stock.symbol,
+        price: stock.entry_price || stock.current_price || 0,
+        change: 0,
+        changePercent: 0,
+        volume: 0,
+        marketCap: 'N/A',
+        sector: 'N/A',
+        score: stock.score || 0,
+        status: 'qualified' as const,
+        timestamp: stock.scan_date || new Date().toISOString()
+      }));
+
+      const rejectedStocksData: ScanResult[] = (rejectedRes.data.data || []).map((stock: any) => ({
+        id: stock.id?.toString() || stock.symbol,
+        symbol: stock.symbol,
+        name: stock.name || stock.symbol,
+        price: stock.current_price || 0,
+        change: 0,
+        changePercent: 0,
+        volume: 0,
+        marketCap: 'N/A',
+        sector: 'N/A',
+        score: stock.score || 0,
+        status: 'rejected' as const,
+        reason: stock.reason || 'Did not meet criteria',
+        timestamp: stock.scan_date || new Date().toISOString()
+      }));
+
+      setScanResults([...qualifiedStocksData, ...rejectedStocksData]);
+      setScanProgress(100);
+
+      const result = res.data.data || res.data;
+      setSnack({
+        open: true,
+        msg: `Scan complete! ${result.qualifiedCount || qualifiedStocksData.length}/${result.totalCandidates || (qualifiedStocksData.length + rejectedStocksData.length)} stocks qualified`,
+        severity: 'success'
+      });
+
       // Refresh status after scan
       const statusRes = await api.get('status');
       setStatus(statusRes.data);
     } catch (err) {
       setSnack({ open: true, msg: 'Scan failed: ' + ((err as any)?.response?.data?.error || (err as Error).message), severity: 'error' });
-      setScanning(false);
     } finally {
+      setScanning(false);
       setManualScanLoading(false);
+      setScanProgress(0);
     }
   };
 
@@ -265,14 +238,14 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
               <Analytics sx={{ mr: 2, fontSize: 28 }} />
               <Typography variant="h6" fontWeight="bold">Market Analysis in Progress</Typography>
             </Box>
-            <LinearProgress 
-              variant="determinate" 
-              value={scanProgress} 
-              sx={{ 
-                mb: 2, 
-                backgroundColor: 'rgba(255,255,255,0.3)', 
-                '& .MuiLinearProgress-bar': { backgroundColor: 'white' } 
-              }} 
+            <LinearProgress
+              variant="determinate"
+              value={scanProgress}
+              sx={{
+                mb: 2,
+                backgroundColor: 'rgba(255,255,255,0.3)',
+                '& .MuiLinearProgress-bar': { backgroundColor: 'white' }
+              }}
             />
             <Typography variant="body2">
               Analyzing market data... ({Math.round(scanProgress)}%)
@@ -283,14 +256,14 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
 
       {/* System Status */}
       <Grid container spacing={3} mb={4}>
-        <Grid item xs={12} md={8}>
+        <Grid size={{ xs: 12, md: 8 }}>
           <Card sx={{ height: '100%' }}>
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={3} color="primary">
                 System Status
               </Typography>
               <Grid container spacing={2}>
-                <Grid item xs={6} md={3}>
+                <Grid size={{ xs: 6, md: 3 }}>
                   <Box textAlign="center">
                     <Typography variant="h4" fontWeight="bold" color="success.main">
                       {status?.qualifiedStocks || 0}
@@ -300,7 +273,7 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                     </Typography>
                   </Box>
                 </Grid>
-                <Grid item xs={6} md={3}>
+                <Grid size={{ xs: 6, md: 3 }}>
                   <Box textAlign="center">
                     <Typography variant="h4" fontWeight="bold" color="info.main">
                       {status?.totalStocks || 0}
@@ -310,7 +283,7 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                     </Typography>
                   </Box>
                 </Grid>
-                <Grid item xs={6} md={3}>
+                <Grid size={{ xs: 6, md: 3 }}>
                   <Box textAlign="center">
                     <Typography variant="h4" fontWeight="bold" color="warning.main">
                       {status?.successRate || 0}%
@@ -320,7 +293,7 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                     </Typography>
                   </Box>
                 </Grid>
-                <Grid item xs={6} md={3}>
+                <Grid size={{ xs: 6, md: 3 }}>
                   <Box textAlign="center">
                     <Typography variant="h4" fontWeight="bold" color="primary.main">
                       {status?.uptime ? Math.floor(status.uptime / 3600) : 0}h
@@ -334,8 +307,8 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
             </CardContent>
           </Card>
         </Grid>
-        
-        <Grid item xs={12} md={4}>
+
+        <Grid size={{ xs: 12, md: 4 }}>
           <Card sx={{ height: '100%' }}>
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={2} color="primary">
@@ -346,7 +319,7 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                   <ListItemIcon>
                     <Assessment color="primary" />
                   </ListItemIcon>
-                  <ListItemText 
+                  <ListItemText
                     primary="Start New Analysis"
                     secondary="Run comprehensive market scan"
                   />
@@ -355,7 +328,7 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                   <ListItemIcon>
                     <Download color="success" />
                   </ListItemIcon>
-                  <ListItemText 
+                  <ListItemText
                     primary="Export Results"
                     secondary="Download analysis report"
                   />
@@ -364,7 +337,7 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                   <ListItemIcon>
                     <Share color="info" />
                   </ListItemIcon>
-                  <ListItemText 
+                  <ListItemText
                     primary="Share Report"
                     secondary="Send results via email"
                   />
@@ -379,19 +352,19 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
       <Card sx={{ mb: 4 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-            <Tab 
-              icon={<CheckCircle />} 
-              label={`Qualified (${qualifiedStocks.length})`} 
+            <Tab
+              icon={<CheckCircle />}
+              label={`Qualified (${qualifiedStocks.length})`}
               iconPosition="start"
             />
-            <Tab 
-              icon={<Warning />} 
-              label={`Rejected (${rejectedStocks.length})`} 
+            <Tab
+              icon={<Warning />}
+              label={`Rejected (${rejectedStocks.length})`}
               iconPosition="start"
             />
-            <Tab 
-              icon={<Info />} 
-              label="All Results" 
+            <Tab
+              icon={<Info />}
+              label="All Results"
               iconPosition="start"
             />
           </Tabs>
@@ -419,15 +392,15 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                             <Typography variant="h6" fontWeight="bold">
                               {stock.symbol}
                             </Typography>
-                            <Chip 
-                              label={`Score: ${stock.score}`} 
-                              color="success" 
+                            <Chip
+                              label={`Score: ${stock.score}`}
+                              color="success"
                               size="small"
                             />
-                            <Chip 
-                              label={stock.sector} 
-                              color="primary" 
-                              variant="outlined" 
+                            <Chip
+                              label={stock.sector}
+                              color="primary"
+                              variant="outlined"
                               size="small"
                             />
                           </Box>
@@ -447,11 +420,11 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                                 ) : (
                                   <TrendingDown color="error" sx={{ mr: 0.5 }} />
                                 )}
-                                <Typography 
+                                <Typography
                                   variant="body2"
                                   color={stock.change >= 0 ? 'success.main' : 'error.main'}
                                 >
-                                  {stock.change >= 0 ? '+' : ''}{stock.change ? Number(stock.change).toFixed(2) : '0.00'} 
+                                  {stock.change >= 0 ? '+' : ''}{stock.change ? Number(stock.change).toFixed(2) : '0.00'}
                                   ({stock.changePercent >= 0 ? '+' : ''}{stock.changePercent ? Number(stock.changePercent).toFixed(2) : '0.00'}%)
                                 </Typography>
                               </Box>
@@ -511,15 +484,15 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                             <Typography variant="h6" fontWeight="bold">
                               {stock.symbol}
                             </Typography>
-                            <Chip 
-                              label={`Score: ${stock.score}`} 
-                              color="error" 
+                            <Chip
+                              label={`Score: ${stock.score}`}
+                              color="error"
                               size="small"
                             />
-                            <Chip 
-                              label={stock.sector} 
-                              color="primary" 
-                              variant="outlined" 
+                            <Chip
+                              label={stock.sector}
+                              color="primary"
+                              variant="outlined"
                               size="small"
                             />
                           </Box>
@@ -561,18 +534,18 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
             </Typography>
             <Grid container spacing={2}>
               {scanResults.map((stock) => (
-                <Grid item xs={12} sm={6} md={4} key={stock.id}>
-                  <Card 
-                    sx={{ 
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={stock.id}>
+                  <Card
+                    sx={{
                       border: `2px solid ${stock.status === 'qualified' ? 'success.main' : 'error.main'}`,
                       '&:hover': { boxShadow: 4 }
                     }}
                   >
                     <CardContent>
                       <Box display="flex" alignItems="center" mb={2}>
-                        <Avatar sx={{ 
-                          mr: 2, 
-                          backgroundColor: stock.status === 'qualified' ? 'success.main' : 'error.main' 
+                        <Avatar sx={{
+                          mr: 2,
+                          backgroundColor: stock.status === 'qualified' ? 'success.main' : 'error.main'
                         }}>
                           {stock.symbol.charAt(0)}
                         </Avatar>
@@ -585,30 +558,30 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
                           </Typography>
                         </Box>
                       </Box>
-                      
+
                       <Typography variant="h5" fontWeight="bold" mb={1}>
                         ₹{stock.price ? Number(stock.price).toFixed(2) : '0.00'}
                       </Typography>
-                      
+
                       <Box display="flex" alignItems="center" mb={2}>
                         {stock.change >= 0 ? (
                           <TrendingUp color="success" sx={{ mr: 0.5 }} />
                         ) : (
                           <TrendingDown color="error" sx={{ mr: 0.5 }} />
                         )}
-                        <Typography 
+                        <Typography
                           variant="body2"
                           color={stock.change >= 0 ? 'success.main' : 'error.main'}
                         >
-                          {stock.change >= 0 ? '+' : ''}{stock.change ? Number(stock.change).toFixed(2) : '0.00'} 
+                          {stock.change >= 0 ? '+' : ''}{stock.change ? Number(stock.change).toFixed(2) : '0.00'}
                           ({stock.changePercent >= 0 ? '+' : ''}{stock.changePercent ? Number(stock.changePercent).toFixed(2) : '0.00'}%)
                         </Typography>
                       </Box>
-                      
+
                       <Box display="flex" justifyContent="space-between" alignItems="center">
-                        <Chip 
-                          label={stock.status === 'qualified' ? 'Qualified' : 'Rejected'} 
-                          color={stock.status === 'qualified' ? 'success' : 'error'} 
+                        <Chip
+                          label={stock.status === 'qualified' ? 'Qualified' : 'Rejected'}
+                          color={stock.status === 'qualified' ? 'success' : 'error'}
                           size="small"
                         />
                         <Typography variant="body2" color="text.secondary">
@@ -626,7 +599,7 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
 
       {/* Quick Stats */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={4}>
+        <Grid size={{ xs: 12, md: 4 }}>
           <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
             <CardContent>
               <Box display="flex" alignItems="center" mb={2}>
@@ -644,8 +617,8 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
             </CardContent>
           </Card>
         </Grid>
-        
-        <Grid item xs={12} md={4}>
+
+        <Grid size={{ xs: 12, md: 4 }}>
           <Card sx={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
             <CardContent>
               <Box display="flex" alignItems="center" mb={2}>
@@ -663,8 +636,8 @@ export default function Home({ setSnack }: HomeProps): React.JSX.Element {
             </CardContent>
           </Card>
         </Grid>
-        
-        <Grid item xs={12} md={4}>
+
+        <Grid size={{ xs: 12, md: 4 }}>
           <Card sx={{ background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', color: 'white' }}>
             <CardContent>
               <Box display="flex" alignItems="center" mb={2}>

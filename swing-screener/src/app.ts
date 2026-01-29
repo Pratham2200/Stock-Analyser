@@ -16,6 +16,8 @@ import { ScanService } from './services/ScanService';
 import { StockAnalysisService } from './services/StockAnalysisService';
 import { ScraperService } from './services/ScraperService';
 import { NotificationService } from './services/NotificationService';
+import { MarketDataService } from './services/MarketDataService';
+import { TargetStoplossService } from './services/TargetStoplossService';
 
 // Repositories
 import { StockRepository } from './repositories/StockRepository';
@@ -43,13 +45,13 @@ export class App {
   async initialize(): Promise<void> {
     try {
       this.logger.info('Initializing application...');
-      
+
       await this.setupDatabase();
       await this.setupMiddleware();
       await this.setupServices();
       await this.setupRoutes();
       await this.setupErrorHandling();
-      
+
       this.logger.info('Application initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize application:', error);
@@ -106,13 +108,17 @@ export class App {
     const stockAnalysisService = new StockAnalysisService();
     const scraperService = new ScraperService();
     const notificationService = new NotificationService(this.config);
+    const marketDataService = new MarketDataService();
+    const targetStoplossService = new TargetStoplossService();
 
-    // Initialize scan service
+    // Initialize scan service with all dependencies
     const scanService = new ScanService(
       stockRepository,
       stockAnalysisService,
       scraperService,
       notificationService,
+      marketDataService,
+      targetStoplossService,
       this.config
     );
 
@@ -121,7 +127,9 @@ export class App {
       scanService,
       stockAnalysisService,
       scraperService,
-      notificationService
+      notificationService,
+      marketDataService,
+      targetStoplossService
     };
 
     this.app.locals.repositories = {
@@ -129,7 +137,7 @@ export class App {
       portfolioRepository
     };
 
-    this.logger.info('Services initialized');
+    this.logger.info('Services initialized (with real market data)');
   }
 
   private async setupRoutes(): Promise<void> {
@@ -163,7 +171,7 @@ export class App {
     // Global error handler
     this.app.use((error: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
       this.logger.error('Unhandled error:', error);
-      
+
       res.status(error.statusCode || 500).json({
         success: false,
         error: error.message || 'Internal server error',
@@ -176,7 +184,7 @@ export class App {
   async start(): Promise<void> {
     try {
       const port = this.config.dashboard.port;
-      
+
       this.server = this.app.listen(port, () => {
         this.logger.info(`🚀 Server running on http://localhost:${port}`);
         this.logger.info(`📊 API available at http://localhost:${port}/api`);
@@ -195,7 +203,7 @@ export class App {
 
   private async shutdown(): Promise<void> {
     this.logger.info('Shutting down gracefully...');
-    
+
     if (this.server) {
       this.server.close(() => {
         this.logger.info('Server closed');

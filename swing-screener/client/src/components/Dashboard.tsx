@@ -101,99 +101,79 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
   const [scanStatus, setScanStatus] = useState<string>('');
   const [activeTab, setActiveTab] = useState<number>(0);
   const [speedDialOpen, setSpeedDialOpen] = useState<boolean>(false);
+  const [alerts, setAlerts] = useState<any[]>([]);
 
-  // Mock data for demonstration
-  const mockStocks: Stock[] = [
-    {
-      id: '1',
-      symbol: 'RELIANCE',
-      name: 'Reliance Industries Ltd',
-      currentPrice: 2456.75,
-      change: 12.50,
-      changePercent: 0.51,
-      sector: 'Energy',
-      qualified: true
-    },
-    {
-      id: '2',
-      symbol: 'TCS',
-      name: 'Tata Consultancy Services',
-      currentPrice: 3456.25,
-      change: -8.75,
-      changePercent: -0.25,
-      sector: 'IT',
-      qualified: true
-    },
-    {
-      id: '3',
-      symbol: 'HDFC',
-      name: 'HDFC Bank Ltd',
-      currentPrice: 1456.80,
-      change: 5.25,
-      changePercent: 0.36,
-      sector: 'Banking',
-      qualified: false
-    }
-  ];
+  // Stock data is now fetched from API - no mock data needed
 
   // Fetch dashboard data
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const [scanResults, performance] = await Promise.all([
+      const [scanResults, performance, alertsData] = await Promise.all([
         api.get('/scan-results'),
-        api.get('/performance')
+        api.get('/performance'),
+        api.get('/alerts')
       ]);
 
       setDashboardData({
         scanResults: scanResults.data,
         performance: performance.data
       });
+      setAlerts(alertsData.data || []);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      // Use mock data for demonstration
+      // Show empty state instead of mock data
       setDashboardData({
         scanResults: {
-          totalStocks: 50,
-          qualifiedStocks: 12,
-          successRate: 8.0,
-          lastScanTime: new Date().toISOString(),
-          scanDuration: 45
+          totalStocks: 0,
+          qualifiedStocks: 0,
+          successRate: 0,
+          lastScanTime: '',
+          scanDuration: 0
         },
         performance: {
-          todayPnl: 1250.50,
-          todayPnlPercent: 0.16,
-          weekPnl: 8750.25,
-          weekPnlPercent: 1.14
+          todayPnl: 0,
+          todayPnlPercent: 0,
+          weekPnl: 0,
+          weekPnlPercent: 0
         }
       });
+      setAlerts([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Start scan function
+  // Start scan function - REAL API CALL
   const startScan = async () => {
     try {
       setScanning(true);
-      setScanProgress(0);
-      setScanStatus('Starting scan...');
-      
-      // Simulate scan progress
-      for (let i = 0; i <= 100; i += 10) {
-        setScanProgress(i);
-        setScanStatus(`Scanning stocks... ${i}%`);
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-      
+      setScanProgress(10);
+      setScanStatus('Connecting to scanner...');
+
+      // Call the REAL backend API to start the scan
+      const response = await api.post('/start-scan');
+
+      setScanProgress(100);
       setScanStatus('Scan completed!');
-      setSnack({ open: true, msg: 'Stock scan completed successfully!', severity: 'success' });
-      
+
+      if (response.data.success) {
+        const result = response.data.data;
+        setSnack({
+          open: true,
+          msg: `Scan complete! ${result.qualifiedCount}/${result.totalCandidates} stocks qualified (${result.successRate?.toFixed(1) || 0}%)`,
+          severity: 'success'
+        });
+      } else {
+        setSnack({ open: true, msg: 'Scan completed with warnings', severity: 'warning' });
+      }
+
       // Refresh data after scan
       await fetchDashboardData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting scan:', error);
-      setSnack({ open: true, msg: 'Failed to start scan', severity: 'error' });
+      const errorMsg = error.response?.data?.error || error.message || 'Failed to start scan';
+      setSnack({ open: true, msg: errorMsg, severity: 'error' });
     } finally {
       setScanning(false);
       setScanProgress(0);
@@ -266,9 +246,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
               <Analytics sx={{ mr: 2 }} />
               <Typography variant="h6">Market Analysis in Progress</Typography>
             </Box>
-            <LinearProgress 
-              variant="determinate" 
-              value={scanProgress} 
+            <LinearProgress
+              variant="determinate"
+              value={scanProgress}
               sx={{ mb: 1, backgroundColor: 'rgba(255,255,255,0.3)' }}
             />
             <Typography variant="body2">
@@ -281,10 +261,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
       {/* Main Stats Cards */}
       <Grid container spacing={3} mb={4}>
         {/* Today's Performance */}
-        <Grid item xs={12} md={3}>
-          <Card sx={{ 
-            background: dashboardData?.performance?.todayPnlPercent && dashboardData.performance.todayPnlPercent >= 0 
-              ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' 
+        <Grid size={{ xs: 12, md: 3 }}>
+          <Card sx={{
+            background: dashboardData?.performance?.todayPnlPercent && dashboardData.performance.todayPnlPercent >= 0
+              ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'
               : 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
             color: 'white',
             height: '100%'
@@ -298,15 +278,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                 ₹{dashboardData?.performance?.todayPnl?.toLocaleString() || '0'}
               </Typography>
               <Typography variant="h6">
-                {dashboardData?.performance?.todayPnlPercent >= 0 ? '+' : ''}{dashboardData?.performance?.todayPnlPercent?.toFixed(2) || '0'}%
+                {(dashboardData?.performance?.todayPnlPercent ?? 0) >= 0 ? '+' : ''}{(dashboardData?.performance?.todayPnlPercent ?? 0).toFixed(2)}%
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         {/* Scan Results */}
-        <Grid item xs={12} md={3}>
-          <Card sx={{ 
+        <Grid size={{ xs: 12, md: 3 }}>
+          <Card sx={{
             background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
             height: '100%'
           }}>
@@ -329,8 +309,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
         </Grid>
 
         {/* Success Rate */}
-        <Grid item xs={12} md={3}>
-          <Card sx={{ 
+        <Grid size={{ xs: 12, md: 3 }}>
+          <Card sx={{
             background: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
             height: '100%'
           }}>
@@ -350,10 +330,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
         </Grid>
 
         {/* Weekly Performance */}
-        <Grid item xs={12} md={3}>
-          <Card sx={{ 
-            background: dashboardData?.performance?.weekPnlPercent && dashboardData.performance.weekPnlPercent >= 0 
-              ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+        <Grid size={{ xs: 12, md: 3 }}>
+          <Card sx={{
+            background: dashboardData?.performance?.weekPnlPercent && dashboardData.performance.weekPnlPercent >= 0
+              ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
               : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
             color: 'white',
             height: '100%'
@@ -389,33 +369,84 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
         {/* Analysis Tab */}
         {activeTab === 0 && (
           <Box sx={{ p: 3 }}>
-            <Typography variant="h5" fontWeight="bold" mb={3}>Stock Analysis</Typography>
-            
+            <Typography variant="h5" fontWeight="bold" mb={3}>Analysis Breakdown</Typography>
+
             <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Card sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Box textAlign="center">
-                    <BarChart sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
-                    <Typography variant="h6" fontWeight="bold" mb={1}>
-                      Technical Analysis
+              <Grid size={{ xs: 12, md: 8 }}>
+                <Card sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Box display="flex" alignItems="center" mb={3}>
+                      <BarChart sx={{ mr: 1, color: 'primary.main' }} />
+                      <Typography variant="h6" fontWeight="bold">Failure Reasons</Typography>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" mb={2}>
+                      Why stocks were rejected in the last scan
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Advanced charting and indicators
-                    </Typography>
-                  </Box>
+
+                    {/* Failure Bars */}
+                    {[
+                      { label: 'Consolidation', value: dashboardData?.scanResults?.lastScanTime ? (dashboardData as any).scanResults.consolidation_failures || 0 : 0, color: '#FF6B6B' },
+                      { label: 'Higher Lows', value: dashboardData?.scanResults?.lastScanTime ? (dashboardData as any).scanResults.higher_low_failures || 0 : 0, color: '#FFD93D' },
+                      { label: 'Volume Pump', value: dashboardData?.scanResults?.lastScanTime ? (dashboardData as any).scanResults.volume_failures || 0 : 0, color: '#4D96FF' },
+                      { label: 'Bear Squeeze', value: dashboardData?.scanResults?.lastScanTime ? (dashboardData as any).scanResults.bear_squeeze_failures || 0 : 0, color: '#6BCB77' }
+                    ].map((item) => {
+                      const totalFailures = ((dashboardData as any)?.scanResults?.rejected_count || 1);
+                      const percent = Math.min(100, Math.round((item.value / totalFailures) * 100));
+
+                      return (
+                        <Box key={item.label} mb={2}>
+                          <Box display="flex" justifyContent="space-between" mb={0.5}>
+                            <Typography variant="body2">{item.label}</Typography>
+                            <Typography variant="body2" fontWeight="bold">{item.value} ({percent}%)</Typography>
+                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={percent}
+                            sx={{
+                              height: 10,
+                              borderRadius: 5,
+                              backgroundColor: '#f0f0f0',
+                              '& .MuiLinearProgress-bar': { backgroundColor: item.color }
+                            }}
+                          />
+                        </Box>
+                      );
+                    })}
+                  </CardContent>
                 </Card>
               </Grid>
-              <Grid item xs={12} md={6}>
-                <Card sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Box textAlign="center">
-                    <PieChart sx={{ fontSize: 60, color: 'secondary.main', mb: 2 }} />
-                    <Typography variant="h6" fontWeight="bold" mb={1}>
-                      Sector Analysis
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Portfolio diversification insights
-                    </Typography>
-                  </Box>
+
+              <Grid size={{ xs: 12, md: 4 }}>
+                <Card sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Box display="flex" alignItems="center" mb={3}>
+                      <PieChart sx={{ mr: 1, color: 'secondary.main' }} />
+                      <Typography variant="h6" fontWeight="bold">Scan Efficiency</Typography>
+                    </Box>
+
+                    <List>
+                      <ListItem>
+                        <ListItemText
+                          primary="Avg Analysis Time"
+                          secondary={`${Math.round((dashboardData as any)?.scanResults?.avg_duration || 0)} ms / stock`}
+                        />
+                      </ListItem>
+                      <Divider />
+                      <ListItem>
+                        <ListItemText
+                          primary="Avg Strategy Score"
+                          secondary={`${Number((dashboardData as any)?.scanResults?.avg_score || 0).toFixed(1)} / 10`}
+                        />
+                      </ListItem>
+                      <Divider />
+                      <ListItem>
+                        <ListItemText
+                          primary="Rejected Stocks"
+                          secondary={(dashboardData as any)?.scanResults?.rejected_count || 0}
+                        />
+                      </ListItem>
+                    </List>
+                  </CardContent>
                 </Card>
               </Grid>
             </Grid>
@@ -426,9 +457,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
         {activeTab === 1 && (
           <Box sx={{ p: 3 }}>
             <Typography variant="h5" fontWeight="bold" mb={3}>Performance Metrics</Typography>
-            
+
             <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <Card sx={{ p: 3, textAlign: 'center' }}>
                   <ShowChart sx={{ fontSize: 40, color: 'primary.main', mb: 2 }} />
                   <Typography variant="h4" fontWeight="bold" color="primary">
@@ -439,7 +470,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
                   </Typography>
                 </Card>
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <Card sx={{ p: 3, textAlign: 'center' }}>
                   <Timeline sx={{ fontSize: 40, color: 'success.main', mb: 2 }} />
                   <Typography variant="h4" fontWeight="bold" color="success.main">
@@ -459,41 +490,46 @@ const Dashboard: React.FC<DashboardProps> = ({ setSnack }) => {
           <Box sx={{ p: 3 }}>
             <Typography variant="h5" fontWeight="bold" mb={3}>Market Alerts</Typography>
             <List>
-              <ListItem>
-                <ListItemAvatar>
-                  <Avatar sx={{ backgroundColor: 'success.main' }}>
-                    <CheckCircle />
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary="RELIANCE target achieved"
-                  secondary="Target price of ₹2500 reached"
-                />
-              </ListItem>
-              <Divider />
-              <ListItem>
-                <ListItemAvatar>
-                  <Avatar sx={{ backgroundColor: 'warning.main' }}>
-                    <TrendingDown />
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary="TCS showing weakness"
-                  secondary="Price below 50-day moving average"
-                />
-              </ListItem>
-              <Divider />
-              <ListItem>
-                <ListItemAvatar>
-                  <Avatar sx={{ backgroundColor: 'info.main' }}>
-                    <Analytics />
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary="New scan results available"
-                  secondary="12 qualified stocks found"
-                />
-              </ListItem>
+              {alerts.length > 0 ? (
+                alerts.map((alert, index) => (
+                  <React.Fragment key={alert.id || index}>
+                    <ListItem>
+                      <ListItemAvatar>
+                        <Avatar sx={{
+                          backgroundColor:
+                            alert.type === 'success' ? 'success.main' :
+                              alert.type === 'error' ? 'error.main' :
+                                alert.type === 'warning' ? 'warning.main' : 'info.main'
+                        }}>
+                          {alert.type === 'success' ? <TrendingUp /> :
+                            alert.type === 'error' ? <TrendingDown /> :
+                              alert.type === 'warning' ? <Notifications /> : <CheckCircle />}
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={alert.title}
+                        secondary={
+                          <>
+                            <Typography component="span" variant="body2" color="text.primary">
+                              {alert.message}
+                            </Typography>
+                            <br />
+                            <Typography component="span" variant="caption" color="text.secondary">
+                              {new Date(alert.timestamp).toLocaleString()}
+                            </Typography>
+                          </>
+                        }
+                      />
+                    </ListItem>
+                    {index < alerts.length - 1 && <Divider />}
+                  </React.Fragment>
+                ))
+              ) : (
+                <Box textAlign="center" py={4}>
+                  <Notifications sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
+                  <Typography color="text.secondary">No active alerts</Typography>
+                </Box>
+              )}
             </List>
           </Box>
         )}

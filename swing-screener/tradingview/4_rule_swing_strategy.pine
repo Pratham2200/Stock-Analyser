@@ -1,0 +1,252 @@
+// This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © 4-Rule Swing Strategy Screener
+
+//@version=5
+indicator("4-Rule Swing Strategy", overlay=true)
+
+// ============================================================================
+// STRATEGY PARAMETERS
+// ============================================================================
+consolidationWindow = input.int(60, "Consolidation Window (days)", minval=20, maxval=120)
+consolidationThreshold = input.float(30.0, "Consolidation Threshold (%)", minval=10.0, maxval=50.0)
+emaPeriod = input.int(10, "EMA Period", minval=5, maxval=50)
+volumeWindow = input.int(20, "Volume Window (bars)", minval=10, maxval=50)
+volumeMultiplier = input.float(1.8, "Volume Spike Multiplier", minval=1.2, maxval=5.0)
+wickThreshold = input.float(40.0, "Lower Wick Threshold (%)", minval=20.0, maxval=60.0)
+
+// Table position (fixed to bottom right)
+tablePosition = "bottom_right"
+
+// ============================================================================
+// CORE CALCULATIONS
+// ============================================================================
+
+// EMA Calculation
+ema10 = ta.ema(close, emaPeriod)
+
+// Plot EMA on chart
+plot(ema10, "EMA 10", color=color.new(color.blue, 0), linewidth=2)
+
+// ============================================================================
+// ZONE DETECTION
+// Zones: Periods where close < EMA10
+// ============================================================================
+
+// Track if we're in a zone (close below EMA)
+inZone = close < ema10
+
+// Zone low tracking - we need to track the lowest close within each zone
+var float currentZoneLow = na
+var float lastZoneLow = na
+var float prevZoneLow = na
+var int zoneCount = 0
+
+// Detect zone transitions
+zoneStart = inZone and not inZone[1]
+zoneEnd = not inZone and inZone[1]
+
+// When entering a new zone, save previous zone low and reset current
+if zoneStart
+    prevZoneLow := lastZoneLow
+    currentZoneLow := close
+    zoneCount := zoneCount + 1
+
+// While in zone, track the lowest close
+if inZone
+    currentZoneLow := math.min(nz(currentZoneLow, close), close)
+
+// When zone ends, save the zone low
+if zoneEnd
+    lastZoneLow := currentZoneLow
+
+// Count total zones in consolidation window
+var int zonesInWindow = 0
+zonesInWindow := 0
+for i = 0 to consolidationWindow - 1
+    if i < bar_index
+        wasInZone = close[i] < ema10[i]
+        wasNotInZone = i + 1 <= bar_index ? close[i + 1] >= ema10[i + 1] : true
+        if wasInZone and wasNotInZone
+            zonesInWindow := zonesInWindow + 1
+
+// ============================================================================
+// RULE 1: CONSOLIDATION PHASE
+// Base = minimum of all zone lows in window
+// Pass if current price < 30% above base
+// ============================================================================
+
+// Find the base (minimum low across all zones in the window)
+var float basePrice = na
+basePrice := na
+
+// Scan for zone lows in the consolidation window
+var float[] zoneLows = array.new_float()
+array.clear(zoneLows)
+
+var int zoneStartIdx = -1
+for i = consolidationWindow - 1 to 0
+    if i < bar_index
+        priceInZone = close[i] < ema10[i]
+        prevInZone = i + 1 <= bar_index ? close[i + 1] < ema10[i + 1] : false
+        
+        // Zone just started (going back in time)
+        if priceInZone and not prevInZone
+            zoneStartIdx := i
+        
+        // Zone just ended - calculate zone low
+        if not priceInZone and prevInZone and zoneStartIdx != -1
+            zoneLow = close[zoneStartIdx]
+            for j = zoneStartIdx to i + 1
+                if j >= 0 and j < bar_index
+                    zoneLow := math.min(zoneLow, close[j])
+            array.push(zoneLows, zoneLow)
+            zoneStartIdx := -1
+
+// Handle zone that extends to current bar
+if zoneStartIdx != -1
+    zoneLow = close[zoneStartIdx]
+    for j = zoneStartIdx to 0
+        if j >= 0
+            zoneLow := math.min(zoneLow, close[j])
+    array.push(zoneLows, zoneLow)
+
+// Calculate base price (minimum of all zone lows)
+zonesFound = array.size(zoneLows)
+if zonesFound > 0
+    basePrice := array.min(zoneLows)
+
+// Calculate consolidation pass/fail
+percentGainFromBase = na(basePrice) or basePrice == 0 ? 0.0 : ((close - basePrice) / basePrice) * 100
+rule1Pass = zonesFound > 0 and percentGainFromBase < consolidationThreshold
+
+// ============================================================================
+// RULE 2: HIGHER LOW STRUCTURE
+// Compare latest zone low vs previous zone low
+// Pass if: latestZoneLow >= previousZoneLow
+// ============================================================================
+
+latestZoneLow = zonesFound >= 1 ? array.get(zoneLows, zonesFound - 1) : na
+previousZoneLow2 = zonesFound >= 2 ? array.get(zoneLows, zonesFound - 2) : na
+
+// Higher low check
+higherLowConfirmed = zonesFound >= 2 ? latestZoneLow >= previousZoneLow2 : (zonesFound == 1 ? close > latestZoneLow : false)
+
+// Price validation: if price < EMA AND price < latestZoneLow → FAIL
+priceAboveEma = close >= ema10
+priceAboveZoneLow = na(latestZoneLow) ? true : close > latestZoneLow
+priceBrokenDown = not priceAboveEma and not priceAboveZoneLow
+
+rule2Pass = zonesFound > 0 and higherLowConfirmed and not priceBrokenDown
+
+// ============================================================================
+// RULE 3: VOLUME PUMP
+// Scan last 20 bars for volume >= 1.8x its preceding 20-bar average
+// ============================================================================
+
+var bool volumeSpikeFound = false
+volumeSpikeFound := false
+var float highestVolumeRatio = 0.0
+highestVolumeRatio := 0.0
+
+for i = 0 to volumeWindow - 1
+    if i < bar_index
+        currentVol = volume[i]
+        
+        // Calculate preceding 20-bar average
+        avgVol = 0.0
+        for j = i + 1 to i + volumeWindow
+            if j < bar_index
+                avgVol := avgVol + volume[j]
+        avgVol := avgVol / volumeWindow
+        
+        if avgVol > 0
+            volRatio = currentVol / avgVol
+            if volRatio > highestVolumeRatio
+                highestVolumeRatio := volRatio
+            if volRatio >= volumeMultiplier
+                volumeSpikeFound := true
+                break
+
+rule3Pass = volumeSpikeFound
+
+// ============================================================================
+// RULE 4: BEAR SQUEEZE CANDLE
+// Today's bar: lower wick >= 40% of total range
+// ============================================================================
+
+totalRange = high - low
+bodyLow = math.min(open, close)
+lowerWick = bodyLow - low
+wickPercent = totalRange > 0 ? (lowerWick / totalRange) * 100 : 0
+
+rule4Pass = wickPercent >= wickThreshold
+
+// ============================================================================
+// SCORE CALCULATION
+// ============================================================================
+
+swingScore = (rule1Pass ? 1 : 0) + (rule2Pass ? 1 : 0) + (rule3Pass ? 1 : 0) + (rule4Pass ? 1 : 0) + (priceAboveEma ? 1 : 0)
+qualified = swingScore == 5
+
+// ============================================================================
+// ADDITIONAL INFO
+// ============================================================================
+
+priceVsEma = close >= ema10 ? "ABOVE" : "BELOW"
+
+// Current volume vs average
+currentAvgVol = ta.sma(volume, volumeWindow)
+volumeRatio = currentAvgVol > 0 ? volume / currentAvgVol : 0
+volumeStatus = volumeRatio >= volumeMultiplier ? "HIGH" : "NORMAL"
+
+// ============================================================================
+// TABLE UI - 4 Strategy Rules + Price vs EMA + Swing Score
+// ============================================================================
+
+var table strategyTable = table.new(position.bottom_right, 2, 7, border_width=1)
+
+if barstate.islast
+    // Header row (gray background)
+    table.cell(strategyTable, 0, 0, "4-Rule Swing Strategy", bgcolor=color.rgb(128, 128, 128), text_color=color.white, text_size=size.normal)
+    table.cell(strategyTable, 1, 0, "Status", bgcolor=color.rgb(128, 128, 128), text_color=color.white, text_size=size.normal)
+    
+    // Rule 1: Consolidation
+    table.cell(strategyTable, 0, 1, "1. Consolidation", bgcolor=color.white, text_color=color.black, text_size=size.normal)
+    table.cell(strategyTable, 1, 1, rule1Pass ? "PASS" : "FAIL", bgcolor=color.white, text_color=rule1Pass ? color.green : color.red, text_size=size.normal)
+    
+    // Rule 2: Higher Low
+    table.cell(strategyTable, 0, 2, "2. Higher Low", bgcolor=color.white, text_color=color.black, text_size=size.normal)
+    table.cell(strategyTable, 1, 2, rule2Pass ? "PASS" : "FAIL", bgcolor=color.white, text_color=rule2Pass ? color.green : color.red, text_size=size.normal)
+    
+    // Rule 3: Volume Rump
+    table.cell(strategyTable, 0, 3, "3. Volume Rump", bgcolor=color.white, text_color=color.black, text_size=size.normal)
+    table.cell(strategyTable, 1, 3, rule3Pass ? "PASS" : "FAIL", bgcolor=color.white, text_color=rule3Pass ? color.green : color.red, text_size=size.normal)
+    
+    // Rule 4: Bear Squeeze
+    table.cell(strategyTable, 0, 4, "4. Bear Squeeze", bgcolor=color.white, text_color=color.black, text_size=size.normal)
+    table.cell(strategyTable, 1, 4, rule4Pass ? "PASS" : "FAIL", bgcolor=color.white, text_color=rule4Pass ? color.green : color.red, text_size=size.normal)
+    
+    // Price > EMA10
+    table.cell(strategyTable, 0, 5, "Price > EMA10", bgcolor=color.white, text_color=color.black, text_size=size.normal)
+    table.cell(strategyTable, 1, 5, priceAboveEma ? "YES" : "NO", bgcolor=color.white, text_color=priceAboveEma ? color.green : color.red, text_size=size.normal)
+    
+    // Swing Score (yellow background)
+    table.cell(strategyTable, 0, 6, "SWING SCORE", bgcolor=color.yellow, text_color=color.black, text_size=size.normal)
+    table.cell(strategyTable, 1, 6, str.tostring(swingScore) + " / 5", bgcolor=color.yellow, text_color=color.black, text_size=size.normal)
+
+// ============================================================================
+// VISUAL SIGNALS ON CHART
+// ============================================================================
+
+// Plot buy signal when qualified
+plotshape(qualified and qualified[1] == false, title="Qualified Signal", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.normal)
+
+// Background color when qualified
+bgcolor(qualified ? color.new(color.green, 90) : na)
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+alertcondition(qualified and qualified[1] == false, title="Stock Qualified", message="4-Rule Swing Strategy: Stock is now QUALIFIED!")
+alertcondition(swingScore >= 4 and swingScore[1] < 4, title="High Score Alert", message="4-Rule Swing Strategy: Score reached 4/5 or higher!")

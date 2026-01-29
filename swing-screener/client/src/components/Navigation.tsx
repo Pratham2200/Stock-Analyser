@@ -60,7 +60,8 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
     { id: 'scan', label: 'Run Scan', icon: <Search />, color: 'warning' },
     { id: 'scanned', label: 'All Scanner Stocks', icon: <TableChart />, color: 'secondary' },
     { id: 'selected', label: 'Selected Stocks', icon: <TrendingUp />, color: 'success' },
-    { id: 'rejected', label: 'Rejected Stocks', icon: <TrendingDown />, color: 'error' }
+    { id: 'rejected', label: 'Rejected Stocks', icon: <TrendingDown />, color: 'error' },
+    { id: 'summary', label: 'Performance Summary', icon: <BarChart />, color: 'info' }
   ];
 
   const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -87,14 +88,14 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
             </Typography>
           </Box>
         </Box>
-        <Chip 
-          label="Live" 
-          color="success" 
-          size="small" 
+        <Chip
+          label="Live"
+          color="success"
+          size="small"
           sx={{ backgroundColor: 'rgba(255,255,255,0.2)', color: 'white' }}
         />
       </Box>
-      
+
       <List sx={{ p: 2 }}>
         {menuItems.map((item) => (
           <ListItem key={item.id} disablePadding sx={{ mb: 0.5 }}>
@@ -124,7 +125,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
               <ListItemIcon sx={{ minWidth: 40 }}>
                 {item.icon}
               </ListItemIcon>
-              <ListItemText 
+              <ListItemText
                 primary={item.label}
                 primaryTypographyProps={{
                   fontWeight: currentPage === item.id ? 'bold' : 'normal'
@@ -134,9 +135,9 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
           </ListItem>
         ))}
       </List>
-      
+
       <Divider sx={{ mx: 2 }} />
-      
+
       <Box sx={{ p: 2 }}>
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
           Quick Stats
@@ -176,7 +177,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
           >
             <MenuIcon />
           </IconButton>
-          
+
           <Box display="flex" alignItems="center" flexGrow={1}>
             <Avatar sx={{ mr: 2, backgroundColor: 'primary.main' }}>
               <Analytics />
@@ -197,7 +198,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
                 <Notifications />
               </Badge>
             </IconButton>
-            
+
             <IconButton color="inherit" onClick={handleProfileMenuOpen}>
               <Avatar sx={{ width: 32, height: 32, backgroundColor: 'primary.main' }}>
                 <Person />

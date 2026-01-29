@@ -13,14 +13,19 @@ export class NotificationService extends BaseService {
 
   async sendEmailNotification(qualifiedCount: number, totalAnalyzed: number): Promise<void> {
     if (!this.config.notifications.sendEmail) {
-      this.logger.info('Email notifications disabled');
+      return;
+    }
+
+    if (!this.config.email.host || !this.config.email.user) {
+      this.logger.warn('Email notification skipped: SMTP configuration missing');
       return;
     }
 
     try {
       this.logger.info(`Sending email notification: ${qualifiedCount}/${totalAnalyzed} qualified`);
-      // Mock email sending for now
-      this.logger.success('Email notification sent successfully');
+      // In a real implementation, we would call a mailer transport here
+      // For now, we just acknowledge we are ready to send but lack the transport wiring
+      this.logger.info('Email transport would trigger here (SMTP configured)');
     } catch (error) {
       this.logger.error('Failed to send email notification:', error);
     }

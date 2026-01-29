@@ -1,4 +1,4 @@
-// src/types/analysis.ts - Analysis-specific types
+// src/types/analysis.ts - Analysis-specific types for 4-Rule Swing Trading Strategy
 
 export interface DailyBar {
   date: string | Date;
@@ -27,6 +27,23 @@ export interface AnalysisOutput {
   analysisDurationMs: number;
   dataPointsDaily: number;
   dataPointsIntraday: number;
+  // Calculated indicators for storage
+  calculatedIndicators?: {
+    ema10Values: number[];
+    ema20Values: number[];
+    volumeAvgs: number[];
+    volumeRatios: number[];
+  };
+  // Zone information for storage
+  zones?: Array<{
+    zoneNumber: number;
+    startIndex: number;
+    endIndex: number;
+    startDate: string;
+    endDate: string;
+    zoneLow: number;
+    barCount: number;
+  }>;
 }
 
 export interface AnalysisDetails {
@@ -37,79 +54,105 @@ export interface AnalysisDetails {
   overall: OverallResult;
 }
 
+// Zone represents a period where price closed below the 10 EMA
+export interface Zone {
+  startIndex: number;
+  endIndex: number;
+  low: number;
+}
+
+// RULE 1: Consolidation Phase - Zone-based analysis
 export interface ConsolidationResult {
   pass: boolean;
   status: string;
   reason: string;
-  basePrice: number | null;
-  currentMove: number;
-  consolidationDays: number;
-  range: {
-    high: number;
-    low: number;
-    range: number;
-    rangePercent: number;
-  };
+  base: number;
+  currentPrice: number;
+  ema10Current: number;
+  percentGain: number;
+  zoneCount: number;
+  zones: Zone[];
 }
 
+// RULE 2: Higher Low Structure - Zone lows comparison
 export interface HigherLowResult {
   pass: boolean;
   status: string;
   reason: string;
-  higherLowCount: number;
-  recentLows: number[];
-  trend: 'up' | 'down' | 'sideways';
-  strength: number;
+  latestZoneLow: number;
+  previousZoneLow: number;
+  currentPrice: number;
+  ema10Current: number;
+  priceAboveEma?: boolean;
+  priceAboveZoneLow?: boolean;
+  zoneCount: number;
+}
+
+// RULE 3: Volume Pump - Individual bar spike detection
+export interface VolumeSpikeDetails {
+  barIndex: number;
+  barDate: string | Date;
+  volume: number;
+  avgVolume: number;
+  volumeRatio: number;
 }
 
 export interface VolumePumpResult {
   pass: boolean;
   status: string;
   reason: string;
-  volumeRatio: number;
-  averageVolume: number;
-  currentVolume: number;
-  volumeTrend: 'increasing' | 'decreasing' | 'stable';
+  spikeDetails: VolumeSpikeDetails | null;
+  threshold: number;
+  windowSize: number;
 }
 
+// RULE 4: Bear Squeeze Candle - Lower wick analysis
 export interface BearSqueezeResult {
   pass: boolean;
   status: string;
   reason: string;
-  squeezeCount: number;
-  recentSqueezes: number[];
-  bearishPressure: number;
-  bullishMomentum: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  bodyLow: number;
+  lowerWick: number;
+  totalRange: number;
+  wickPercent: number;
+  threshold: number;
 }
 
+// Overall result with 4/4 scoring
 export interface OverallResult {
   score: number;
+  maxScore: number;
   grade: 'A' | 'B' | 'C' | 'D' | 'F';
-  recommendation: 'strong_buy' | 'buy' | 'hold' | 'sell' | 'strong_sell';
+  recommendation: 'buy' | 'watch' | 'avoid';
   confidence: number;
   riskLevel: 'low' | 'medium' | 'high';
+  rulesPassedSummary: {
+    consolidation: boolean;
+    higherLow: boolean;
+    volumePump: boolean;
+    bearSqueeze: boolean;
+  };
 }
 
 export interface StrategyConfig {
   consolidation: {
-    minDays: number;
-    maxRangePercent: number;
-    minVolume: number;
+    windowDays: number;
+    maxGainPercent: number;
+    emaPeriod: number;
   };
   higherLow: {
-    minCount: number;
-    maxDays: number;
-    minStrength: number;
+    useZoneLows: boolean;
   };
   volumePump: {
-    minRatio: number;
-    minVolume: number;
-    trendDays: number;
+    windowDays: number;
+    multiplier: number;
   };
   bearSqueeze: {
-    minCount: number;
-    maxDays: number;
-    minPressure: number;
+    wickThresholdPercent: number;
   };
 }
 

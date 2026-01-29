@@ -26,7 +26,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Divider
+  Divider,
+  Pagination
 } from '@mui/material';
 import {
   TrendingUp,
@@ -107,6 +108,7 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [limit] = useState(12); // Best for grid layouts (divisible by 2, 3, 4)
   const [totalStocks, setTotalStocks] = useState(0);
 
   useEffect(() => {
@@ -117,9 +119,9 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
     try {
       setLoading(true);
       setError(null);
-      
-      const response = await fetchData(`/rejected?page=${page}&limit=10`);
-      
+
+      const response = await fetchData(`/rejected?page=${page}&limit=${limit}`);
+
       if (response.success) {
         setStocks(response.data);
         setTotalPages(response.pagination?.totalPages || 1);
@@ -133,6 +135,11 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+    setPage(value);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const formatPrice = (price: number | null | undefined) => {
@@ -185,23 +192,36 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           Stocks that failed the analysis criteria
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-          <Chip 
-            label={`Total: ${totalStocks}`} 
-            color="primary" 
-            variant="outlined" 
+        <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Chip
+            label={`Total: ${totalStocks}`}
+            color="primary"
+            variant="outlined"
           />
-          <Chip 
-            label={`Page: ${page} of ${totalPages}`} 
-            color="secondary" 
-            variant="outlined" 
+          <Chip
+            label={`Page: ${page} of ${totalPages}`}
+            color="secondary"
+            variant="outlined"
           />
+          {totalPages > 1 && (
+            <Box sx={{ ml: 'auto' }}>
+              <Pagination
+                count={totalPages}
+                page={page}
+                onChange={handlePageChange}
+                color="primary"
+                shape="rounded"
+                showFirstButton
+                showLastButton
+              />
+            </Box>
+          )}
         </Box>
       </Box>
 
       <Grid container spacing={3}>
         {stocks.map((stock) => (
-          <Grid item xs={12} md={6} lg={4} key={stock.id}>
+          <Grid size={{ xs: 12, md: 6, lg: 4 }} key={stock.id}>
             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <CardContent sx={{ flexGrow: 1 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -291,8 +311,8 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
                     </Typography>
                   </Box>
                   <Tooltip title="View Analysis Details">
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       color="primary"
                       onClick={() => handleViewDetails(stock)}
                     >
@@ -305,6 +325,20 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
           </Grid>
         ))}
       </Grid>
+
+      {totalPages > 1 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: 2 }}>
+          <Pagination
+            count={totalPages}
+            page={page}
+            onChange={handlePageChange}
+            color="primary"
+            showFirstButton
+            showLastButton
+            size="large"
+          />
+        </Box>
+      )}
 
       {stocks.length === 0 && (
         <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -329,26 +363,26 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
                 Overall Analysis
               </Typography>
               <Grid container spacing={2} sx={{ mb: 3 }}>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="body2" color="text.secondary">Grade</Typography>
                   <Chip
                     label={selectedStock.strategy_details.overall.grade}
                     color={getGradeColor(selectedStock.strategy_details.overall.grade) as any}
                   />
                 </Grid>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="body2" color="text.secondary">Score</Typography>
                   <Typography variant="body1" fontWeight="bold">
                     {selectedStock.strategy_details.overall.score}/100
                   </Typography>
                 </Grid>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="body2" color="text.secondary">Risk Level</Typography>
                   <Typography variant="body1" fontWeight="bold">
                     {selectedStock.strategy_details.overall.riskLevel}
                   </Typography>
                 </Grid>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="body2" color="text.secondary">Confidence</Typography>
                   <Typography variant="body1" fontWeight="bold">
                     {selectedStock.strategy_details.overall.confidence ? (Number(selectedStock.strategy_details.overall.confidence) * 100).toFixed(1) : '0.0'}%
@@ -361,7 +395,7 @@ const RejectedStocks: React.FC<RejectedStocksProps> = ({ setSnack }) => {
               <Typography variant="h6" gutterBottom>
                 Detailed Analysis
               </Typography>
-              
+
               <Accordion>
                 <AccordionSummary expandIcon={<ExpandMore />}>
                   <Typography variant="subtitle1">Higher Low Analysis</Typography>

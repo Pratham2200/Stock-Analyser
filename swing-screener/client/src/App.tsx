@@ -7,6 +7,7 @@ import Dashboard from './components/Dashboard';
 import ScannedStocks from './components/ScannedStocks';
 import SelectedStocks from './components/SelectedStocks';
 import RejectedStocks from './components/RejectedStocks';
+import Summary from './components/Summary';
 import Navigation from './components/Navigation';
 
 interface SnackbarState {
@@ -18,21 +19,21 @@ interface SnackbarState {
 function AppContent(): React.JSX.Element {
   const [snack, setSnack] = useState<SnackbarState>({ open: false, msg: '', severity: 'success' });
   const location = useLocation();
-  
+
   // Get current page from URL path
   const getCurrentPage = () => {
     const path = location.pathname.substring(1); // Remove leading slash
     return path || 'dashboard';
   };
-  
+
   const currentPage = getCurrentPage();
-  
+
   const handleNavigate = (page: string) => {
     // Navigation is handled by React Router
     window.history.pushState({}, '', `/${page}`);
     window.dispatchEvent(new PopStateEvent('popstate'));
   };
-  
+
   return (
     <>
       <CssBaseline />
@@ -46,6 +47,7 @@ function AppContent(): React.JSX.Element {
             <Route path="/scanned" element={<ScannedStocks setSnack={setSnack} />} />
             <Route path="/selected" element={<SelectedStocks setSnack={setSnack} />} />
             <Route path="/rejected" element={<RejectedStocks setSnack={setSnack} />} />
+            <Route path="/summary" element={<Summary setSnack={setSnack} />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Box>

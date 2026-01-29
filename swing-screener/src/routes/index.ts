@@ -10,7 +10,7 @@ export function createRoutes(services: any, _repositories: any, pool: any): Rout
 
   // Initialize controllers
   const scanController = new ScanController(services.scanService);
-  const portfolioController = new PortfolioController();
+  const portfolioController = new PortfolioController(services.scanService);
   const healthController = new HealthController(pool);
 
   // Health check routes
@@ -28,6 +28,7 @@ export function createRoutes(services: any, _repositories: any, pool: any): Rout
   router.post('/analyze-stock', scanController.analyzeStock);
   router.get('/quote/:symbol', scanController.getQuote);
   router.get('/logs', scanController.getLogs);
+  router.post('/run-selected-scan', scanController.runSelectedScan);
 
   // Portfolio routes
   router.get('/portfolio', portfolioController.getPortfolio);

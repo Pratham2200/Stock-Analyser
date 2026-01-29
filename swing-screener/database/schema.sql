@@ -1,57 +1,128 @@
 -- Database schema for Stock Analysis Pro
+-- Updated to match StockRepository.ts usage perfectly
 
--- Create database if not exists
--- CREATE DATABASE stock_analysis;
-
--- Create tables
+-- 1. Scans Table
 CREATE TABLE IF NOT EXISTS scans (
     id SERIAL PRIMARY KEY,
-    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    end_time TIMESTAMP,
-    total_stocks INTEGER DEFAULT 0,
-    qualified_stocks INTEGER DEFAULT 0,
-    success_rate DECIMAL(5,2) DEFAULT 0,
-    status VARCHAR(20) DEFAULT 'running',
-    error_message TEXT
+    scan_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    total_stocks_scraped INTEGER,
+    stocks_analyzed INTEGER,
+    stocks_passed INTEGER,
+    scan_duration_seconds INTEGER
 );
 
+-- 2. Stocks Table (All scraped stocks)
 CREATE TABLE IF NOT EXISTS stocks (
     id SERIAL PRIMARY KEY,
     scan_id INTEGER REFERENCES scans(id),
     symbol VARCHAR(20) NOT NULL,
     name VARCHAR(255),
-    current_price DECIMAL(10,2),
-    market_cap BIGINT,
-    volume BIGINT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 2.1. Stock Daily Bars (Historical OHLCV + Calculated Indicators)
+CREATE TABLE IF NOT EXISTS stock_daily_bars (
+    id SERIAL PRIMARY KEY,
+    stock_id INTEGER REFERENCES stocks(id) ON DELETE CASCADE,
+    date TIMESTAMP NOT NULL,
+    open DECIMAL(10,2),
+    high DECIMAL(10,2),
+    low DECIMAL(10,2),
+    close DECIMAL(10,2),
+    adjclose DECIMAL(10,2),
+    volume BIGINT,
+    ema10 DECIMAL(10,2),
+    ema20 DECIMAL(10,2),
+    volume_20bar_avg BIGINT,
+    volume_ratio DECIMAL(6,2),
+    UNIQUE(stock_id, date)
+);
+
+-- 2.2. Stock Metadata (Yahoo Finance Quote Data)
+CREATE TABLE IF NOT EXISTS stock_metadata (
+    id SERIAL PRIMARY KEY,
+    stock_id INTEGER REFERENCES stocks(id) ON DELETE CASCADE,
+    scan_id INTEGER REFERENCES scans(id),
+    
+    -- 52-week data
+    fifty_two_week_low DECIMAL(10,2),
+    fifty_two_week_high DECIMAL(10,2),
+    
+    -- Moving averages
+    fifty_day_average DECIMAL(10,2),
+    two_hundred_day_average DECIMAL(10,2),
+    
+    -- Volume metrics
+    avg_volume_3month BIGINT,
+    avg_volume_10day BIGINT,
+    
+    -- Valuation metrics
+    market_cap BIGINT,
+    trailing_pe DECIMAL(8,2),
+    price_to_book DECIMAL(8,2),
+    eps_trailing_twelve_months DECIMAL(8,2),
+    
+    -- Company info
+    currency VARCHAR(10),
+    exchange VARCHAR(20),
+    long_name VARCHAR(255),
+    market_state VARCHAR(20),
+    
+    -- Full API response (for future use)
+    raw_quote_data JSONB,
+    raw_chart_meta JSONB,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(stock_id, scan_id)
+);
+
+-- 2.3. Stock Zones (Consolidation Zone Analysis)
+CREATE TABLE IF NOT EXISTS stock_zones (
+    id SERIAL PRIMARY KEY,
+    stock_id INTEGER REFERENCES stocks(id) ON DELETE CASCADE,
+    scan_id INTEGER REFERENCES scans(id),
+    zone_number INTEGER,
+    start_date TIMESTAMP,
+    end_date TIMESTAMP,
+    zone_low DECIMAL(10,2),
+    bar_count INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Stock Analysis Table (Technical analysis results)
 CREATE TABLE IF NOT EXISTS stock_analysis (
     id SERIAL PRIMARY KEY,
     stock_id INTEGER REFERENCES stocks(id),
     scan_id INTEGER REFERENCES scans(id),
     qualified BOOLEAN DEFAULT FALSE,
-    score DECIMAL(5,2) DEFAULT 0,
-    failed_at INTEGER DEFAULT 0,
-    reason TEXT,
-    details JSONB,
+    fail_step INTEGER DEFAULT 0,
+    fail_reason TEXT,
+    current_price DECIMAL(10,2),
+    ema10 DECIMAL(10,2),
+    ema20 DECIMAL(10,2),
+    strategy_details JSONB,
+    analysis_duration_ms INTEGER,
+    data_points_daily INTEGER,
+    data_points_intraday INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 4. Selected Stocks Table (Qualified stocks with trade params)
 CREATE TABLE IF NOT EXISTS selected_stocks (
     id SERIAL PRIMARY KEY,
     stock_id INTEGER REFERENCES stocks(id),
     scan_id INTEGER REFERENCES scans(id),
     entry_price DECIMAL(10,2),
     stop_loss DECIMAL(10,2),
-    target1 DECIMAL(10,2),
-    target2 DECIMAL(10,2),
-    target3 DECIMAL(10,2),
+    target_1 DECIMAL(10,2),
+    target_2 DECIMAL(10,2),
+    target_3 DECIMAL(10,2),
     position_size INTEGER,
     position_value DECIMAL(12,2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 5. Portfolio Positions (For future portfolio management)
 CREATE TABLE IF NOT EXISTS portfolio_positions (
     id SERIAL PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,
@@ -64,12 +135,29 @@ CREATE TABLE IF NOT EXISTS portfolio_positions (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes for better performance
+-- 6. Stock Performance (For historical tracking if needed later)
+CREATE TABLE IF NOT EXISTS stock_performance (
+    id SERIAL PRIMARY KEY,
+    selected_stock_id INTEGER REFERENCES selected_stocks(id),
+    entry_date DATE NOT NULL,
+    entry_price DECIMAL(10,2),
+    current_price DECIMAL(10,2),
+    highest_price DECIMAL(10,2),
+    lowest_price DECIMAL(10,2),
+    change_percent DECIMAL(8,4),
+    t1_reached BOOLEAN DEFAULT FALSE,
+    t2_reached BOOLEAN DEFAULT FALSE,
+    t3_reached BOOLEAN DEFAULT FALSE,
+    stoploss_hit BOOLEAN DEFAULT FALSE,
+    trailing_stoploss DECIMAL(10,2),
+    status VARCHAR(20) DEFAULT 'active',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_stocks_scan_id ON stocks(scan_id);
 CREATE INDEX IF NOT EXISTS idx_stocks_symbol ON stocks(symbol);
 CREATE INDEX IF NOT EXISTS idx_stock_analysis_stock_id ON stock_analysis(stock_id);
 CREATE INDEX IF NOT EXISTS idx_stock_analysis_scan_id ON stock_analysis(scan_id);
 CREATE INDEX IF NOT EXISTS idx_selected_stocks_stock_id ON selected_stocks(stock_id);
 CREATE INDEX IF NOT EXISTS idx_selected_stocks_scan_id ON selected_stocks(scan_id);
-CREATE INDEX IF NOT EXISTS idx_portfolio_positions_symbol ON portfolio_positions(symbol);
-CREATE INDEX IF NOT EXISTS idx_portfolio_positions_status ON portfolio_positions(status);

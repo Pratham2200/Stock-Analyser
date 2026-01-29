@@ -24,7 +24,8 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Divider
+  Divider,
+  Pagination
 } from '@mui/material';
 import {
   TrendingUp,
@@ -66,19 +67,26 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
   const [selectedStock, setSelectedStock] = useState<SelectedStock | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [limit] = useState(12); // Grid layout 12/4 = 3 per row OR 12/6 = 2 per row
+  const [totalStocks, setTotalStocks] = useState(0);
+
   useEffect(() => {
     fetchSelectedStocks();
-  }, []);
+  }, [page]);
 
   const fetchSelectedStocks = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      const response = await fetchData('/selected');
-      
+
+      const response = await fetchData(`/selected?page=${page}&limit=${limit}`);
+
       if (response.success) {
         setStocks(response.data);
+        setTotalPages(response.pagination?.totalPages || 1);
+        setTotalStocks(response.pagination?.total || 0);
       } else {
         setError('Failed to fetch selected stocks');
       }
@@ -88,6 +96,11 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+    setPage(value);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const formatPrice = (price: number | null | undefined) => {
@@ -133,17 +146,30 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           Stocks that passed the analysis and are ready for trading
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-          <Chip 
-            label={`Total: ${stocks.length}`} 
-            color="primary" 
-            variant="outlined" 
+        <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Chip
+            label={`Total: ${totalStocks}`}
+            color="primary"
+            variant="outlined"
           />
-          <Chip 
-            label={`Total Value: ₹${stocks.reduce((sum, stock) => sum + stock.position_value, 0).toLocaleString()}`} 
-            color="success" 
-            variant="outlined" 
+          <Chip
+            label={`Total Value: ₹${stocks.reduce((sum, stock) => sum + stock.position_value, 0).toLocaleString()}`}
+            color="success"
+            variant="outlined"
           />
+          {totalPages > 1 && (
+            <Box sx={{ ml: 'auto' }}>
+              <Pagination
+                count={totalPages}
+                page={page}
+                onChange={handlePageChange}
+                color="primary"
+                shape="rounded"
+                showFirstButton
+                showLastButton
+              />
+            </Box>
+          )}
         </Box>
       </Box>
 
@@ -151,7 +177,7 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
         {stocks.map((stock) => {
           const pnl = calculatePnL(stock.current_price, stock.entry_price);
           return (
-            <Grid item xs={12} md={6} lg={4} key={stock.symbol}>
+            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={stock.symbol}>
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -180,7 +206,7 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                   </Box>
 
                   <Grid container spacing={1} sx={{ mb: 2 }}>
-                    <Grid item xs={6}>
+                    <Grid size={{ xs: 6 }}>
                       <Typography variant="caption" color="text.secondary">
                         Stop Loss
                       </Typography>
@@ -188,7 +214,7 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                         {formatPrice(stock.stop_loss)}
                       </Typography>
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid size={{ xs: 6 }}>
                       <Typography variant="caption" color="text.secondary">
                         Current Price
                       </Typography>
@@ -219,8 +245,8 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                       </Typography>
                     </Box>
                     <Tooltip title="View Details">
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         color="primary"
                         onClick={() => handleViewDetails(stock)}
                       >
@@ -234,6 +260,20 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
           );
         })}
       </Grid>
+
+      {totalPages > 1 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: 2 }}>
+          <Pagination
+            count={totalPages}
+            page={page}
+            onChange={handlePageChange}
+            color="primary"
+            showFirstButton
+            showLastButton
+            size="large"
+          />
+        </Box>
+      )}
 
       {stocks.length === 0 && (
         <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -255,7 +295,7 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
           {selectedStock && (
             <Box>
               <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Typography variant="h6" gutterBottom>
                     Basic Information
                   </Typography>
@@ -272,8 +312,8 @@ const SelectedStocks: React.FC<SelectedStocksProps> = ({ setSnack }) => {
                     <Typography variant="body1">{new Date(selectedStock.scan_date).toLocaleDateString()}</Typography>
                   </Box>
                 </Grid>
-                
-                <Grid item xs={12} md={6}>
+
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Typography variant="h6" gutterBottom>
                     Trading Parameters
                   </Typography>

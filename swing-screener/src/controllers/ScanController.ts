@@ -14,7 +14,7 @@ export class ScanController extends BaseController {
 
   getStatus = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/status');
-    
+
     try {
       const status = await this.scanService.getScanStatus();
       this.success(res, status);
@@ -25,7 +25,7 @@ export class ScanController extends BaseController {
 
   startScan = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'POST', '/api/start-scan');
-    
+
     try {
       const result = await this.scanService.startManualScan();
       this.success(res, result, 'Scan started successfully', 202);
@@ -41,7 +41,7 @@ export class ScanController extends BaseController {
 
   getResults = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/scan-results');
-    
+
     try {
       const results = await this.scanService.getLatestResults();
       this.success(res, results);
@@ -52,11 +52,11 @@ export class ScanController extends BaseController {
 
   getStocks = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/stocks');
-    
+
     try {
       const { page, limit } = this.getPaginationParams(req);
       const { stocks, total } = await this.scanService.getStocksFromLatestScan(page, limit);
-      
+
       const response = this.createPaginatedResponse(stocks, total, page, limit);
       res.json(response);
     } catch (error) {
@@ -66,10 +66,13 @@ export class ScanController extends BaseController {
 
   getSelectedStocks = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/selected');
-    
+
     try {
-      const selected = await this.scanService.getSelectedStocks();
-      this.success(res, selected);
+      const { page, limit } = this.getPaginationParams(req);
+      const { stocks, total } = await this.scanService.getSelectedStocks(page, limit);
+
+      const response = this.createPaginatedResponse(stocks, total, page, limit);
+      res.json(response);
     } catch (error) {
       this.error(res, (error as Error).message, 500);
     }
@@ -77,11 +80,11 @@ export class ScanController extends BaseController {
 
   getRejectedStocks = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/rejected');
-    
+
     try {
       const { page, limit } = this.getPaginationParams(req);
       const { stocks, total } = await this.scanService.getRejectedStocksFromLatestScan(page, limit);
-      
+
       const response = this.createPaginatedResponse(stocks, total, page, limit);
       res.json(response);
     } catch (error) {
@@ -91,11 +94,11 @@ export class ScanController extends BaseController {
 
   getScanHistory = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/scan-history');
-    
+
     try {
       const { page, limit } = this.getPaginationParams(req);
       const { scans, total } = await this.scanService.getScanHistory(page, limit);
-      
+
       const response = this.createPaginatedResponse(scans, total, page, limit);
       res.json(response);
     } catch (error) {
@@ -105,15 +108,21 @@ export class ScanController extends BaseController {
 
   getStatistics = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/statistics');
-    
+
     try {
-      // Coming soon - return placeholder data
-      this.success(res, {
-        message: "Statistics feature coming soon!",
-        status: "development",
-        features: ["Advanced analytics", "Performance metrics", "Risk analysis"],
-        estimatedRelease: "Q1 2025"
-      });
+      const statistics = await this.scanService.getAnalysisStatistics();
+      this.success(res, statistics);
+    } catch (error) {
+      this.error(res, (error as Error).message, 500);
+    }
+  });
+
+  getAlerts = this.handleAsync(async (req: Request, res: Response) => {
+    this.logRequest(req, 'GET', '/api/alerts');
+
+    try {
+      const alerts = await this.scanService.getMarketAlerts();
+      this.success(res, alerts);
     } catch (error) {
       this.error(res, (error as Error).message, 500);
     }
@@ -121,31 +130,33 @@ export class ScanController extends BaseController {
 
   analyzeStock = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'POST', '/api/analyze-stock');
-    
+
     try {
-      // Coming soon - return placeholder data
-      this.success(res, {
-        message: "Individual stock analysis coming soon!",
-        status: "development",
-        features: ["Real-time analysis", "Technical indicators", "Risk assessment"],
-        estimatedRelease: "Q1 2025"
-      });
+      const { symbol, lookbackDays } = req.body;
+
+      if (!symbol) {
+        return this.error(res, 'Symbol is required', 400);
+      }
+
+      const result = await this.scanService.analyzeSingleStock(symbol, lookbackDays || 120);
+      this.success(res, result);
     } catch (error) {
-      this.error(res, (error as Error).message, 400);
+      this.error(res, (error as Error).message, 500);
     }
   });
 
   getQuote = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', `/api/quote/${req.params.symbol}`);
-    
+
     try {
-      // Coming soon - return placeholder data
-      this.success(res, {
-        message: "Real-time quotes coming soon!",
-        status: "development",
-        features: ["Live price updates", "Market data", "Price alerts"],
-        estimatedRelease: "Q1 2025"
-      });
+      const { symbol } = req.params;
+
+      if (!symbol) {
+        return this.error(res, 'Symbol is required', 400);
+      }
+
+      const quote = await this.scanService.getStockQuote(symbol);
+      this.success(res, quote);
     } catch (error) {
       this.error(res, (error as Error).message, 500);
     }
@@ -153,15 +164,31 @@ export class ScanController extends BaseController {
 
   getLogs = this.handleAsync(async (req: Request, res: Response) => {
     this.logRequest(req, 'GET', '/api/logs');
-    
+
     try {
-      // Coming soon - return placeholder data
-      this.success(res, {
-        message: "Advanced logging coming soon!",
-        status: "development",
-        features: ["Real-time logs", "Error tracking", "Performance monitoring"],
-        estimatedRelease: "Q1 2025"
-      });
+      const lines = parseInt(req.query.lines as string) || 100;
+      const logs = await this.scanService.getRecentLogs(lines);
+      this.success(res, logs);
+    } catch (error) {
+      this.error(res, (error as Error).message, 500);
+    }
+  });
+
+  /**
+   * Run selected scan - evaluate performance of selected stocks from a date
+   */
+  runSelectedScan = this.handleAsync(async (req: Request, res: Response) => {
+    this.logRequest(req, 'POST', '/api/run-selected-scan');
+
+    try {
+      const { fromDate } = req.body;
+
+      if (!fromDate) {
+        return this.error(res, 'fromDate is required', 400);
+      }
+
+      const results = await this.scanService.runSelectedScan(new Date(fromDate));
+      this.success(res, results, 'Selected scan completed');
     } catch (error) {
       this.error(res, (error as Error).message, 500);
     }
