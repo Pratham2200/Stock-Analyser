@@ -1,0 +1,53 @@
+mkdir -p ~/.npm-global
+npm config set prefix '~/.npm-global'
+echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.zshrc
+source ~/.zshrc
+npm install -g @anthropic-ai/claude-code
+git clone https://github.com/affaan-m/everything-claude-code.git ~/everything-claude-code
+cd ~/everything-claude-code
+npm install
+./install.sh typescript
+npm install -g antigravity-claude-proxy
+nano ~/.claude/settings.json
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "test",
+    "ANTHROPIC_BASE_URL": "http://localhost:8080",
+    "ANTHROPIC_MODEL": "claude-sonnet-4-5-thinking",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-5-thinking",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-5-thinking",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-sonnet-4-5",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-sonnet-4-5-thinking"
+  }
+}
+echo 'export ANTHROPIC_BASE_URL="http://localhost:8080"' >> ~/.zshrc
+echo 'export ANTHROPIC_API_KEY="test"' >> ~/.zshrc
+source ~/.zshrc
+# First stopped the proxy with Ctrl+C, then:
+antigravity-claude-proxy accounts add
+# Signed in with Google account in browser
+antigravity-claude-proxy accounts list
+antigravity-claude-proxy start
+cd ~/Stock-Analyser
+nano CLAUDE.md
+mkdir -p .claude
+nano .claude/mcp.json
+claude /init
+# Removed ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN from ~/.zshrc
+nano ~/.zshrc
+
+source ~/.zshrc
+
+# Fixed settings.json to:
+nano ~/.claude/settings.json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:8080",
+    "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-sonnet-4-5"
+  }
+}
+claude /logout

@@ -36,6 +36,19 @@ export function createConfig(): AppConfig {
     notifications: {
       sendEmail: process.env.SEND_EMAIL === 'true',
       sendTelegram: process.env.SEND_TELEGRAM === 'true'
+    },
+    ai: {
+      enabled: process.env.ENABLE_AI_LAYER !== 'false',
+      apiKey: process.env.GEMINI_API_KEY || '',
+      model: process.env.AI_MODEL || 'gemini-2.0-flash-exp',
+      temperature: parseFloat(process.env.AI_TEMPERATURE || '0.7'),
+      maxTokens: parseInt(process.env.AI_MAX_TOKENS || '1000'),
+      rateLimitMs: parseInt(process.env.AI_RATE_LIMIT_MS || '4500'),
+      confidenceThreshold: parseInt(process.env.AI_CONFIDENCE_THRESHOLD || '70'),
+      groqApiKey: process.env.GROQ_API_KEY || '',
+      groqModel: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      openRouterApiKey: process.env.OPENROUTER_API_KEY || '',
+      openRouterModel: process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free'
     }
   };
 }

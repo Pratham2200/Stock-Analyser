@@ -1,29 +1,94 @@
-// src/services/MarketDataService.ts - Market data fetching using Puppeteer browser
+// src/services/MarketDataService.ts - Market data with NSE primary + Yahoo fallback
 
 import { BaseService } from './BaseService';
 import { DailyBar } from '../types/analysis';
 import { EMA } from 'technicalindicators';
 import { YahooBrowserService, QuoteData, ChartResult } from './YahooBrowserService';
+import { NseDataService, NseQuote } from './NseDataService';
 
 export { QuoteData, ChartResult } from './YahooBrowserService';
 
 export class MarketDataService extends BaseService {
     private yahooBrowser: YahooBrowserService;
+    private nseService: NseDataService;
+    private nseInitialized = false;
+    private nseAvailable = true; // Set to false after repeated failures
 
     constructor() {
         super('MarketDataService');
         this.yahooBrowser = new YahooBrowserService();
+        this.nseService = new NseDataService();
 
-        // Pre-initialize the browser
+        // Pre-initialize both services
         this.yahooBrowser.initialize().catch(err => {
             this.logger.error('Failed to pre-initialize Yahoo browser:', err);
+        });
+
+        this.nseService.initialize().then(() => {
+            this.nseInitialized = true;
+            this.logger.info('NSE data source initialized (primary)');
+        }).catch(err => {
+            this.logger.warn('NSE initialization failed, Yahoo will be primary:', err);
+            this.nseAvailable = false;
         });
     }
 
     /**
      * Fetch daily bars AND quote data in a single API call (most efficient)
+     * Strategy: Try NSE → fallback to Yahoo
      */
     async fetchDailyBarsWithQuote(symbol: string, days: number = 120): Promise<ChartResult> {
+        // Try NSE first (for Indian stocks)
+        if (this.nseAvailable && this.nseInitialized) {
+            try {
+                const nseSymbol = this.toNseSymbol(symbol);
+                if (nseSymbol) {
+                    const [quote, history] = await Promise.all([
+                        this.nseService.fetchQuote(nseSymbol),
+                        this.nseService.fetchHistoricalData(
+                            nseSymbol,
+                            new Date(Date.now() - days * 24 * 60 * 60 * 1000),
+                            new Date(),
+                        ),
+                    ]);
+
+                    if (history.length > 0) {
+                        const bars: DailyBar[] = history.map(h => ({
+                            date: h.date,
+                            open: h.open,
+                            high: h.high,
+                            low: h.low,
+                            close: h.close,
+                            volume: h.volume,
+                        }));
+
+                        const quoteData: QuoteData = {
+                            symbol: nseSymbol,
+                            price: quote.lastPrice,
+                            change: quote.change,
+                            changePercent: quote.pChange,
+                            high: quote.dayHigh,
+                            low: quote.dayLow,
+                            volume: quote.totalTradedVolume,
+                            previousClose: quote.previousClose,
+                            fiftyTwoWeekHigh: quote.yearHigh,
+                            fiftyTwoWeekLow: quote.yearLow,
+                            currency: 'INR',
+                            exchangeName: 'NSE',
+                        };
+
+                        this.logger.info(`[NSE] Fetched ${bars.length} bars + quote for ${nseSymbol}`);
+                        return { bars, quote: quoteData, chartMeta: { source: 'NSE' } };
+                    }
+                }
+            } catch (error: any) {
+                this.logger.warn(
+                    `[NSE] Failed for ${symbol}, falling back to Yahoo: ${error.message}`,
+                );
+            }
+        }
+
+        // Fallback: Yahoo
         return await this.yahooBrowser.fetchDailyBarsWithQuote(symbol, days);
     }
 
@@ -31,6 +96,39 @@ export class MarketDataService extends BaseService {
      * Fetch daily OHLCV bars only
      */
     async fetchDailyBars(symbol: string, days: number = 120): Promise<{ bars: DailyBar[]; chartMeta?: any }> {
+        // Try NSE first
+        if (this.nseAvailable && this.nseInitialized) {
+            try {
+                const nseSymbol = this.toNseSymbol(symbol);
+                if (nseSymbol) {
+                    const history = await this.nseService.fetchHistoricalData(
+                        nseSymbol,
+                        new Date(Date.now() - days * 24 * 60 * 60 * 1000),
+                        new Date(),
+                    );
+
+                    if (history.length > 0) {
+                        const bars: DailyBar[] = history.map(h => ({
+                            date: h.date,
+                            open: h.open,
+                            high: h.high,
+                            low: h.low,
+                            close: h.close,
+                            volume: h.volume,
+                        }));
+
+                        this.logger.info(`[NSE] Fetched ${bars.length} bars for ${nseSymbol}`);
+                        return { bars };
+                    }
+                }
+            } catch (error: any) {
+                this.logger.warn(
+                    `[NSE] fetchDailyBars failed for ${symbol}, falling back to Yahoo: ${error.message}`,
+                );
+            }
+        }
+
+        // Fallback: Yahoo
         return await this.yahooBrowser.fetchDailyBars(symbol, days);
     }
 
@@ -38,6 +136,37 @@ export class MarketDataService extends BaseService {
      * Fetch current quote
      */
     async fetchCurrentQuote(symbol: string): Promise<QuoteData | null> {
+        // Try NSE first
+        if (this.nseAvailable && this.nseInitialized) {
+            try {
+                const nseSymbol = this.toNseSymbol(symbol);
+                if (nseSymbol) {
+                    const quote = await this.nseService.fetchQuote(nseSymbol);
+
+                    if (quote.lastPrice > 0) {
+                        return {
+                            symbol: nseSymbol,
+                            price: quote.lastPrice,
+                            change: quote.change,
+                            changePercent: quote.pChange,
+                            high: quote.dayHigh,
+                            low: quote.dayLow,
+                            volume: quote.totalTradedVolume,
+                            previousClose: quote.previousClose,
+                            fiftyTwoWeekHigh: quote.yearHigh,
+                            fiftyTwoWeekLow: quote.yearLow,
+                            currency: 'INR',
+                            exchangeName: 'NSE',
+                        };
+                    }
+                }
+            } catch (error: any) {
+                this.logger.warn(
+                    `[NSE] fetchCurrentQuote failed for ${symbol}, falling back to Yahoo: ${error.message}`,
+                );
+            }
+        }
+
         return await this.yahooBrowser.fetchCurrentQuote(symbol);
     }
 
@@ -58,6 +187,13 @@ export class MarketDataService extends BaseService {
     async fetchCurrentPrice(symbol: string): Promise<number> {
         const quote = await this.fetchCurrentQuote(symbol);
         return quote?.price || 0;
+    }
+
+    /**
+     * Get the underlying NSE data service (for direct access to options, etc.)
+     */
+    getNseDataService(): NseDataService {
+        return this.nseService;
     }
 
     /**
@@ -94,9 +230,26 @@ export class MarketDataService extends BaseService {
     }
 
     /**
-     * Close the browser when done
+     * Convert Yahoo-style symbols (RELIANCE.NS) to NSE symbols (RELIANCE)
+     * Returns null for non-Indian symbols that should use Yahoo
+     */
+    private toNseSymbol(symbol: string): string | null {
+        // Already an NSE symbol (no dots)
+        if (!symbol.includes('.')) return symbol;
+
+        // Indian stock on NSE (ends with .NS / .BO)
+        if (symbol.endsWith('.NS')) return symbol.replace('.NS', '');
+        if (symbol.endsWith('.BO')) return symbol.replace('.BO', '');
+
+        // Non-Indian symbol — use Yahoo only
+        return null;
+    }
+
+    /**
+     * Close all services when done
      */
     async shutdown(): Promise<void> {
         await this.yahooBrowser.close();
     }
 }
+

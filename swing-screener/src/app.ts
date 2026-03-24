@@ -18,6 +18,22 @@ import { ScraperService } from './services/ScraperService';
 import { NotificationService } from './services/NotificationService';
 import { MarketDataService } from './services/MarketDataService';
 import { TargetStoplossService } from './services/TargetStoplossService';
+import { NseDataService } from './services/NseDataService';
+import { GreeksEngine } from './services/GreeksEngine';
+import { OptionsService } from './services/OptionsService';
+import { StrategyRecommender } from './services/StrategyRecommender';
+import { SentimentService } from './services/SentimentService';
+import { AIAnalysisService } from './services/AIAnalysisService';
+import { AskAIService } from './services/AskAIService';
+import { WhatIfSimulator } from './services/WhatIfSimulator';
+import { InsiderTrackingService } from './services/InsiderTrackingService';
+import { FiiDiiService } from './services/FiiDiiService';
+import { OptionsPainMapService } from './services/OptionsPainMapService';
+import { AiTradeJournalService } from './services/AiTradeJournalService';
+import { CompoundAlertService } from './services/CompoundAlertService';
+import { SectorRotationService } from './services/SectorRotationService';
+import { EarningsWhisperService } from './services/EarningsWhisperService';
+import { PaperTradingService } from './services/PaperTradingService';
 
 // Repositories
 import { StockRepository } from './repositories/StockRepository';
@@ -104,12 +120,51 @@ export class App {
     const stockRepository = new StockRepository(this.pool);
     const portfolioRepository = new PortfolioRepository(this.pool);
 
-    // Initialize services
+    // Initialize core services
     const stockAnalysisService = new StockAnalysisService();
     const scraperService = new ScraperService();
     const notificationService = new NotificationService(this.config);
     const marketDataService = new MarketDataService();
     const targetStoplossService = new TargetStoplossService();
+
+    // Initialize NSE + Options + Sim services
+    const nseDataService = marketDataService.getNseDataService();
+    const greeksEngine = new GreeksEngine();
+    const optionsService = new OptionsService(nseDataService, greeksEngine);
+    const strategyRecommender = new StrategyRecommender(optionsService, greeksEngine, nseDataService);
+    const whatIfSimulator = new WhatIfSimulator(greeksEngine, nseDataService);
+    const optionsPainMapService = new OptionsPainMapService(optionsService, nseDataService);
+    
+    // Initialize Insider + Flow services
+    const insiderService = new InsiderTrackingService(nseDataService);
+    const fiidiiService = new FiiDiiService(nseDataService);
+    
+    // Initialize Compound Alerts
+    const compoundAlertService = new CompoundAlertService(
+      marketDataService,
+      optionsService,
+      fiidiiService,
+      notificationService
+    );
+    
+    // Initialize Sector Rotation
+    const sectorRotationService = new SectorRotationService(nseDataService, marketDataService);
+
+    // Initialize Paper Trading
+    const paperTradingService = new PaperTradingService(marketDataService);
+
+    // Initialize AI + Sentiment services
+    const aiAnalysisService = new AIAnalysisService();
+    const sentimentService = new SentimentService();
+    const tradeJournalService = new AiTradeJournalService(aiAnalysisService, this.pool);
+    const earningsWhisperService = new EarningsWhisperService(aiAnalysisService, sentimentService, marketDataService);
+    let askAIService: AskAIService | null = null;
+    try {
+      askAIService = new AskAIService(nseDataService, sentimentService, optionsService);
+      this.logger.info('AskAI service initialized');
+    } catch (error) {
+      this.logger.warn('AskAI service not available (missing GEMINI_API_KEY)');
+    }
 
     // Initialize scan service with all dependencies
     const scanService = new ScanService(
@@ -119,7 +174,8 @@ export class App {
       notificationService,
       marketDataService,
       targetStoplossService,
-      this.config
+      this.config,
+      this.pool
     );
 
     // Store services in app for use in controllers
@@ -129,7 +185,22 @@ export class App {
       scraperService,
       notificationService,
       marketDataService,
-      targetStoplossService
+      targetStoplossService,
+      nseDataService,
+      greeksEngine,
+      optionsService,
+      strategyRecommender,
+      whatIfSimulator,
+      optionsPainMapService,
+      sentimentService,
+      askAIService,
+      insiderService,
+      fiidiiService,
+      tradeJournalService,
+      compoundAlertService,
+      sectorRotationService,
+      earningsWhisperService,
+      paperTradingService,
     };
 
     this.app.locals.repositories = {
@@ -137,7 +208,7 @@ export class App {
       portfolioRepository
     };
 
-    this.logger.info('Services initialized (with real market data)');
+    this.logger.info('All services initialized (NSE primary + Yahoo fallback)');
   }
 
   private async setupRoutes(): Promise<void> {
@@ -188,7 +259,7 @@ export class App {
       this.server = this.app.listen(port, () => {
         this.logger.info(`🚀 Server running on http://localhost:${port}`);
         this.logger.info(`📊 API available at http://localhost:${port}/api`);
-        this.logger.info(`🎯 Frontend available at http://localhost:${port}`);
+        this.logger.info(`🎯 Frontend available at http://localhost:5173`);
       });
 
       // Graceful shutdown

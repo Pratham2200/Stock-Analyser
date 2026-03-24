@@ -193,4 +193,62 @@ export class ScanController extends BaseController {
       this.error(res, (error as Error).message, 500);
     }
   });
+
+  // ============================================
+  // OBSERVATION QUEUE ENDPOINTS
+  // ============================================
+
+  /**
+   * Get pending observation queue items
+   */
+  getObservationQueue = this.handleAsync(async (req: Request, res: Response) => {
+    this.logRequest(req, 'GET', '/api/observations');
+
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const observations = await this.scanService.getObservationQueue(limit);
+      this.success(res, observations);
+    } catch (error) {
+      this.error(res, (error as Error).message, 500);
+    }
+  });
+
+  /**
+   * Process user decision on an observation
+   */
+  processObservation = this.handleAsync(async (req: Request, res: Response) => {
+    this.logRequest(req, 'POST', '/api/observations/:id/decision');
+
+    try {
+      const observationId = parseInt(req.params.id, 10);
+      const { decision, notes, reviewedBy } = req.body;
+
+      if (!observationId || isNaN(observationId)) {
+        return this.error(res, 'Valid observation ID is required', 400);
+      }
+
+      if (!decision || !['approved', 'rejected'].includes(decision)) {
+        return this.error(res, 'Decision must be "approved" or "rejected"', 400);
+      }
+
+      await this.scanService.processObservationDecision(observationId, decision, notes, reviewedBy);
+      this.success(res, { observationId, decision }, 'Observation processed successfully');
+    } catch (error) {
+      this.error(res, (error as Error).message, 500);
+    }
+  });
+
+  /**
+   * Get AI statistics
+   */
+  getAIStats = this.handleAsync(async (req: Request, res: Response) => {
+    this.logRequest(req, 'GET', '/api/ai-stats');
+
+    try {
+      const stats = await this.scanService.getAIStats();
+      this.success(res, stats);
+    } catch (error) {
+      this.error(res, (error as Error).message, 500);
+    }
+  });
 }

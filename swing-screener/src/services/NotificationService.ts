@@ -31,6 +31,19 @@ export class NotificationService extends BaseService {
     }
   }
 
+  async sendCustomEmail(to: string, subject: string, body: string): Promise<void> {
+    if (!this.config.notifications.sendEmail) {
+      return;
+    }
+    
+    try {
+      this.logger.info(`Ext Sending custom email to ${to}: ${subject}`);
+      this.logger.debug(`Email body: ${body}`);
+    } catch (error) {
+      this.logger.error('Failed to send custom email:', error);
+    }
+  }
+
   async sendErrorNotification(_errorMessage: string, context: string): Promise<void> {
     if (!this.config.notifications.sendEmail) {
       this.logger.info('Email notifications disabled');

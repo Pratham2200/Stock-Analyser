@@ -130,6 +130,19 @@ export interface AppConfig {
     sendEmail: boolean;
     sendTelegram: boolean;
   };
+  ai: {
+    enabled: boolean;
+    apiKey: string;
+    model: string;
+    temperature: number;
+    maxTokens: number;
+    rateLimitMs: number;
+    confidenceThreshold: number;
+    groqApiKey: string;
+    groqModel: string;
+    openRouterApiKey: string;
+    openRouterModel: string;
+  };
 }
 
 // Service Types

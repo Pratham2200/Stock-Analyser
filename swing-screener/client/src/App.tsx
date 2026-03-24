@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { CssBaseline, Snackbar, Alert, Box } from '@mui/material';
 import Home from './pages/Home';
+import ObservationQueue from './pages/ObservationQueue';
 import Dashboard from './components/Dashboard';
 import ScannedStocks from './components/ScannedStocks';
 import SelectedStocks from './components/SelectedStocks';
@@ -44,6 +45,7 @@ function AppContent(): React.JSX.Element {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard setSnack={setSnack} />} />
             <Route path="/scan" element={<Home setSnack={setSnack} />} />
+            <Route path="/observations" element={<ObservationQueue setSnack={setSnack} />} />
             <Route path="/scanned" element={<ScannedStocks setSnack={setSnack} />} />
             <Route path="/selected" element={<SelectedStocks setSnack={setSnack} />} />
             <Route path="/rejected" element={<RejectedStocks setSnack={setSnack} />} />

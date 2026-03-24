@@ -32,4 +32,28 @@ export const fetchData = async (url: string) => {
   }
 };
 
+// Observation Queue API
+export const fetchObservationQueue = async (limit: number = 50) => {
+  const response = await api.get(`/observations?limit=${limit}`);
+  return response.data;
+};
+
+export const processObservation = async (
+  id: number,
+  decision: 'approved' | 'rejected',
+  notes?: string
+) => {
+  const response = await api.post(`/observations/${id}/decision`, {
+    decision,
+    notes,
+    reviewedBy: 'User'
+  });
+  return response.data;
+};
+
+export const fetchAIStats = async () => {
+  const response = await api.get('/ai-stats');
+  return response.data;
+};
+
 export default api;

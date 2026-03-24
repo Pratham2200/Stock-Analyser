@@ -1,5 +1,6 @@
 // src/services/ScanService.ts - Scan orchestration service
 
+import { Pool } from 'pg';
 import { BaseService } from './BaseService';
 import { StockRepository } from '../repositories/StockRepository';
 import { StockAnalysisService } from './StockAnalysisService';
@@ -7,6 +8,7 @@ import { ScraperService } from './ScraperService';
 import { NotificationService } from './NotificationService';
 import { MarketDataService } from './MarketDataService';
 import { TargetStoplossService } from './TargetStoplossService';
+import { AILayerOrchestrator } from './AILayerOrchestrator';
 import { AppConfig } from '../types';
 import { ScanResult } from '../types';
 import { DailyBar } from '../types/analysis';
@@ -18,6 +20,7 @@ export class ScanService extends BaseService {
   private notificationService: NotificationService;
   private marketDataService: MarketDataService;
   private targetStoplossService: TargetStoplossService;
+  private aiOrchestrator: AILayerOrchestrator;
   private config: AppConfig;
   private isRunning: boolean = false;
 
@@ -28,7 +31,8 @@ export class ScanService extends BaseService {
     notificationService: NotificationService,
     marketDataService: MarketDataService,
     targetStoplossService: TargetStoplossService,
-    config: AppConfig
+    config: AppConfig,
+    pool: Pool
   ) {
     super('ScanService');
     this.stockRepository = stockRepository;
@@ -38,6 +42,7 @@ export class ScanService extends BaseService {
     this.marketDataService = marketDataService;
     this.targetStoplossService = targetStoplossService;
     this.config = config;
+    this.aiOrchestrator = new AILayerOrchestrator(pool, config);
   }
 
   async startManualScan(): Promise<ScanResult> {
@@ -162,7 +167,36 @@ export class ScanService extends BaseService {
           await this.stockRepository.insertStockAnalysis(stock.id, scanRecord.id, analysisResult);
           analyzedCount++;
 
-          if (analysisResult.qualified) {
+          // Process through AI layer (if enabled)
+          let finalStatus: 'selected' | 'rejected' | 'observation' = analysisResult.qualified ? 'selected' : 'rejected';
+
+          if (this.aiOrchestrator.isEnabled()) {
+            try {
+              const aiResult = await this.aiOrchestrator.processStock({
+                stockId: parseInt(stock.id as string, 10),
+                scanId: parseInt(scanRecord.id as string, 10),
+                symbol: stock.symbol,
+                name: stock.name,
+                qualified: analysisResult.qualified,
+                analysisDetails: analysisResult.details
+              });
+
+              finalStatus = aiResult.finalStatus;
+
+              if (aiResult.aiDecision) {
+                this.logger.info(`🤖 AI ${aiResult.aiLayerProcessed}: ${aiResult.aiDecision} (${aiResult.confidence}% confidence) → ${finalStatus}`);
+              }
+            } catch (aiError) {
+              this.logger.warn(`AI processing failed for ${stock.symbol}, using code decision:`, aiError);
+            }
+
+            // Rate limiting for Gemini Free Tier (15 RPM)
+            // Wait duration configured via AI_RATE_LIMIT_MS env variable
+            await this.delay(this.config.ai.rateLimitMs);
+          }
+
+          // Handle based on final status (code + AI decision)
+          if (finalStatus === 'selected') {
             qualifiedCount++;
 
             // Get current price and calculate targets/stoploss
@@ -183,7 +217,9 @@ export class ScanService extends BaseService {
               positionValue: positionSize.value
             });
 
-            this.logger.info(`✅ ${stock.symbol} QUALIFIED - Score: ${analysisResult.score}, Entry: ₹${currentPrice.toFixed(2)}, SL: ₹${stoploss.toFixed(2)}`);
+            this.logger.info(`✅ ${stock.symbol} SELECTED - Score: ${analysisResult.score}, Entry: ₹${currentPrice.toFixed(2)}, SL: ₹${stoploss.toFixed(2)}`);
+          } else if (finalStatus === 'observation') {
+            this.logger.info(`👀 ${stock.symbol} → OBSERVATION QUEUE`);
           } else {
             this.logger.info(`❌ ${stock.symbol} REJECTED - ${analysisResult.reason}`);
           }
@@ -506,5 +542,35 @@ export class ScanService extends BaseService {
     }
 
     return results;
+  }
+
+  // ============================================
+  // OBSERVATION QUEUE METHODS
+  // ============================================
+
+  /**
+   * Get pending observation queue items
+   */
+  async getObservationQueue(limit: number = 50): Promise<any[]> {
+    return this.aiOrchestrator.getObservationQueue(limit);
+  }
+
+  /**
+   * Process user decision on an observation
+   */
+  async processObservationDecision(
+    observationId: number,
+    decision: 'approved' | 'rejected',
+    notes?: string,
+    reviewedBy?: string
+  ): Promise<void> {
+    await this.aiOrchestrator.processUserDecision(observationId, decision, notes, reviewedBy);
+  }
+
+  /**
+   * Get AI statistics
+   */
+  async getAIStats(): Promise<any> {
+    return this.aiOrchestrator.getAIStats();
   }
 }
