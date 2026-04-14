@@ -13,6 +13,14 @@ import { createCompoundAlertRoutes } from './compoundAlertRoutes';
 import { createSectorRoutes } from './sectorRoutes';
 import { createEarningsRoutes } from './earningsRoutes';
 import { createPaperTradingRoutes } from './paperTradingRoutes';
+import { createTradeCardRoutes } from './tradeCardRoutes';
+import { createLeaderboardRoutes } from './leaderboardRoutes';
+import { createCorrelationRoutes } from './correlationRoutes';
+import { createUnusualActivityRoutes } from './unusualActivityRoutes';
+import { createEventCalendarRoutes } from './eventCalendarRoutes';
+import { createMultiTimeframeRoutes } from './multiTimeframeRoutes';
+import { createWatchlistRoutes } from './watchlistRoutes';
+import { createTradeIdeaRoutes } from './tradeIdeaRoutes';
 
 export function createRoutes(services: any, _repositories: any, pool: any): Router {
   const router = Router();
@@ -108,6 +116,54 @@ export function createRoutes(services: any, _repositories: any, pool: any): Rout
   if (services.paperTradingService) {
     const paperTradingRoutes = createPaperTradingRoutes(services.paperTradingService);
     router.use('/paper-trading', paperTradingRoutes);
+  }
+
+  // Shareable Trade Cards (Phase 14)
+  if (services.tradeCardService) {
+    const tradeCardRoutes = createTradeCardRoutes(services.tradeCardService);
+    router.use('/cards', tradeCardRoutes);
+  }
+
+  // Paper Trading Leaderboard (Phase 15)
+  if (services.leaderboardService) {
+    const leaderboardRoutes = createLeaderboardRoutes(services.leaderboardService);
+    router.use('/leaderboard', leaderboardRoutes);
+  }
+
+  // Correlation Matrix (Phase 16)
+  if (services.correlationService) {
+    const correlationRoutes = createCorrelationRoutes(services.correlationService);
+    router.use('/correlation', correlationRoutes);
+  }
+
+  // Unusual Activity Detector (Phase 17)
+  if (services.unusualActivityService) {
+    const unusualRoutes = createUnusualActivityRoutes(services.unusualActivityService);
+    router.use('/unusual', unusualRoutes);
+  }
+
+  // Event Calendar (Phase 18)
+  if (services.eventCalendarService) {
+    const eventRoutes = createEventCalendarRoutes(services.eventCalendarService);
+    router.use('/events', eventRoutes);
+  }
+
+  // Multi-Timeframe Dashboard (Phase 19)
+  if (services.multiTimeframeService) {
+    const mtfRoutes = createMultiTimeframeRoutes(services.multiTimeframeService);
+    router.use('/mtf', mtfRoutes);
+  }
+
+  // AI Watchlist Monitoring (Phase 20)
+  if (services.watchlistService) {
+    const watchlistRoutes = createWatchlistRoutes(services.watchlistService);
+    router.use('/watchlist', watchlistRoutes);
+  }
+
+  // AI Trade Idea Feed (Phase 21)
+  if (services.tradeIdeaService) {
+    const tradeIdeaRoutes = createTradeIdeaRoutes(services.tradeIdeaService);
+    router.use('/ideas', tradeIdeaRoutes);
   }
 
   return router;

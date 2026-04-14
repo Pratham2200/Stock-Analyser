@@ -7,17 +7,33 @@ import { Logger } from '../utils/logger-enhanced';
 const logger = new Logger('Database');
 
 export function createDatabaseConnection(config: DatabaseConfig): Pool {
-  const poolConfig: PoolConfig = {
-    host: config.host,
-    port: config.port,
-    database: config.database,
-    user: config.user,
-    password: config.password,
-    ssl: config.ssl,
-    max: config.max,
-    idleTimeoutMillis: config.idleTimeoutMillis,
-    connectionTimeoutMillis: config.connectionTimeoutMillis
-  };
+  let poolConfig: PoolConfig;
+
+  if (config.connectionString) {
+    // Use DATABASE_URL connection string (preferred for cloud deployments)
+    poolConfig = {
+      connectionString: config.connectionString,
+      ssl: config.ssl,
+      max: config.max,
+      idleTimeoutMillis: config.idleTimeoutMillis,
+      connectionTimeoutMillis: config.connectionTimeoutMillis
+    };
+    logger.info('Using DATABASE_URL connection string');
+  } else {
+    // Use individual connection parameters (local development)
+    poolConfig = {
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      user: config.user,
+      password: config.password,
+      ssl: config.ssl,
+      max: config.max,
+      idleTimeoutMillis: config.idleTimeoutMillis,
+      connectionTimeoutMillis: config.connectionTimeoutMillis
+    };
+    logger.info('Using individual DB connection parameters');
+  }
 
   const pool = new Pool(poolConfig);
 

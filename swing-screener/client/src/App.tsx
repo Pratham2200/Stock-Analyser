@@ -10,6 +10,11 @@ import SelectedStocks from './components/SelectedStocks';
 import RejectedStocks from './components/RejectedStocks';
 import Summary from './components/Summary';
 import Navigation from './components/Navigation';
+import AskAI from './pages/AskAI';
+import MarketOverview from './pages/MarketOverview';
+import ProTerminal from './pages/ProTerminal';
+import TradeDesk from './pages/TradeDesk';
+import DiscoveryFeed from './pages/DiscoveryFeed';
 
 interface SnackbarState {
   open: boolean;
@@ -42,7 +47,11 @@ function AppContent(): React.JSX.Element {
         <Navigation currentPage={currentPage} onNavigate={handleNavigate} />
         <Box sx={{ flexGrow: 1 }}>
           <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/overview" replace />} />
+            <Route path="/overview" element={<MarketOverview setSnack={setSnack} />} />
+            <Route path="/terminal" element={<ProTerminal setSnack={setSnack} />} />
+            <Route path="/trade" element={<TradeDesk setSnack={setSnack} />} />
+            <Route path="/feed" element={<DiscoveryFeed setSnack={setSnack} />} />
             <Route path="/dashboard" element={<Dashboard setSnack={setSnack} />} />
             <Route path="/scan" element={<Home setSnack={setSnack} />} />
             <Route path="/observations" element={<ObservationQueue setSnack={setSnack} />} />
@@ -50,7 +59,8 @@ function AppContent(): React.JSX.Element {
             <Route path="/selected" element={<SelectedStocks setSnack={setSnack} />} />
             <Route path="/rejected" element={<RejectedStocks setSnack={setSnack} />} />
             <Route path="/summary" element={<Summary setSnack={setSnack} />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/ask-ai" element={<AskAI setSnack={setSnack} />} />
+            <Route path="*" element={<Navigate to="/overview" replace />} />
           </Routes>
         </Box>
       </Box>

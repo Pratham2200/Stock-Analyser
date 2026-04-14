@@ -45,9 +45,22 @@ export class EarningsWhisperService extends BaseService {
     const quote = await this.marketData.fetchCurrentQuote(symbolUpper);
     const recentTrend = quote ? quote.changePercent : 0;
 
-    // 3. (Mock) Fetch recent earnings reports context for peers
-    // In production, we would query a DB table of recent corporate actions / results
-    const peerContextStr = `Recent peer performance: ${peerSymbols.join(', ')} have shown mixed to positive momentum in the last 2 weeks.`;
+    // 3. Fetch real peer price action
+    const peerResults: string[] = [];
+    for (const peer of peerSymbols) {
+      try {
+        const peerQuote = await this.marketData.fetchCurrentQuote(peer.toUpperCase());
+        if (peerQuote) {
+          const direction = peerQuote.changePercent >= 0 ? 'up' : 'down';
+          peerResults.push(`${peer.toUpperCase()}: ${direction} ${Math.abs(peerQuote.changePercent).toFixed(2)}% (₹${peerQuote.price})`);
+        }
+      } catch {
+        peerResults.push(`${peer.toUpperCase()}: data unavailable`);
+      }
+    }
+    const peerContextStr = peerResults.length > 0
+      ? `Recent peer performance: ${peerResults.join('; ')}`
+      : 'No peer data available for comparison.';
 
     // 4. Construct AI Prompt
     const prompt = `

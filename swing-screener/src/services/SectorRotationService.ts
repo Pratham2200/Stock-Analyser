@@ -2,7 +2,6 @@
 
 import { BaseService } from './BaseService';
 import { NseDataService } from './NseDataService';
-import { MarketDataService } from './MarketDataService';
 
 export interface SectorPerformance {
   sectorName: string;
@@ -29,7 +28,6 @@ export interface SectorRotationAnalysis {
 
 export class SectorRotationService extends BaseService {
   private nseDataService: NseDataService;
-  private marketDataService: MarketDataService;
 
   // Major sectoral indices on NSE
   private readonly MAJOR_SECTORS = [
@@ -48,10 +46,9 @@ export class SectorRotationService extends BaseService {
     'NIFTY INFRA'
   ];
 
-  constructor(nseDataService: NseDataService, marketDataService: MarketDataService) {
+  constructor(nseDataService: NseDataService) {
     super('SectorRotationService');
     this.nseDataService = nseDataService;
-    this.marketDataService = marketDataService;
   }
 
   /**

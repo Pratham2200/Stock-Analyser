@@ -1,10 +1,13 @@
 // src/services/CompoundAlertService.ts — Evaluates multi-leg market conditions for alerts
+// PHASE D: Fully persistent via PostgreSQL
 
+import { Pool } from 'pg';
 import { BaseService } from './BaseService';
 import { MarketDataService } from './MarketDataService';
 import { OptionsService } from './OptionsService';
 import { FiiDiiService } from './FiiDiiService';
 import { NotificationService } from './NotificationService';
+import { RSI } from 'technicalindicators';
 
 export type AlertOperator = '>' | '<' | '>=' | '<=' | '==' | '!=' | 'IN' | 'TRENDS';
 export type AlertMetric = 'PRICE' | 'RSI' | 'MACD' | 'PCR' | 'FII_NET' | 'DII_NET' | 'MAX_PAIN_DIFF';
@@ -17,9 +20,9 @@ export interface AlertCondition {
 }
 
 export interface CompoundAlert {
-  id: string;
+  id: number;
   userId: string;
-  symbol: string; // 'NIFTY' or specific stock
+  symbol: string;
   name: string;
   conditions: AlertCondition[];
   logic: 'AND' | 'OR';
@@ -32,166 +35,200 @@ export class CompoundAlertService extends BaseService {
   private options: OptionsService;
   private fiidii: FiiDiiService;
   private notifications: NotificationService;
-
-  // In-memory store for prototype (will move to DB)
-  private activeAlerts: Map<string, CompoundAlert> = new Map();
+  private pool: Pool;
 
   constructor(
     marketData: MarketDataService,
     options: OptionsService,
     fiidii: FiiDiiService,
-    notifications: NotificationService
+    notifications: NotificationService,
+    pool: Pool
   ) {
     super('CompoundAlertService');
     this.marketData = marketData;
     this.options = options;
     this.fiidii = fiidii;
     this.notifications = notifications;
+    this.pool = pool;
   }
 
   /**
-   * Register a new compound alert
+   * Register a new compound alert — persisted immediately
    */
-  createAlert(alert: Omit<CompoundAlert, 'id' | 'isActive'>): CompoundAlert {
-    const newAlert: CompoundAlert = {
-      ...alert,
-      id: `alt_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      isActive: true,
-    };
-    
-    this.activeAlerts.set(newAlert.id, newAlert);
-    this.logger.info(`Created compound alert [${newAlert.name}] for ${newAlert.symbol}`);
-    return newAlert;
+  async createAlert(alert: Omit<CompoundAlert, 'id' | 'isActive'>): Promise<CompoundAlert> {
+    const res = await this.pool.query(
+      `INSERT INTO compound_alerts (user_id, symbol, name, conditions, logic)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [alert.userId, alert.symbol.toUpperCase(), alert.name, JSON.stringify(alert.conditions), alert.logic]
+    );
+    return this.rowToAlert(res.rows[0]);
+  }
+
+  /**
+   * Get all alerts for a user
+   */
+  async getUserAlerts(userId: string): Promise<CompoundAlert[]> {
+    const res = await this.pool.query(
+      'SELECT * FROM compound_alerts WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    return res.rows.map((r: any) => this.rowToAlert(r));
   }
 
   /**
    * Delete an alert
    */
-  deleteAlert(id: string): boolean {
-    return this.activeAlerts.delete(id);
+  async deleteAlert(alertId: number): Promise<boolean> {
+    const res = await this.pool.query('DELETE FROM compound_alerts WHERE id = $1', [alertId]);
+    return (res.rowCount || 0) > 0;
   }
 
   /**
-   * Get all active alerts for a user
+   * Toggle alert active/inactive
    */
-  getUserAlerts(userId: string): CompoundAlert[] {
-    return Array.from(this.activeAlerts.values()).filter(a => a.userId === userId);
-  }
-
-  /**
-   * Evaluate all active alerts
-   * In production this would be triggered by a Cron job or pub/sub price tick
-   */
-  async evaluateAllAlerts(): Promise<void> {
-    const alertsToCheck = Array.from(this.activeAlerts.values()).filter(a => a.isActive);
-    if (alertsToCheck.length === 0) return;
-
-    this.logger.info(`Evaluating ${alertsToCheck.length} compound alerts`);
-
-    // Group by symbol to batch data fetching
-    const symbols = [...new Set(alertsToCheck.map(a => a.symbol))];
-    const dataCache = new Map<string, any>();
-
-    // Pre-fetch flow data if any alert needs it
-    const needsFlows = alertsToCheck.some(a => 
-      a.conditions.some(c => c.metric === 'FII_NET' || c.metric === 'DII_NET')
+  async toggleAlert(alertId: number): Promise<CompoundAlert> {
+    const res = await this.pool.query(
+      'UPDATE compound_alerts SET is_active = NOT is_active WHERE id = $1 RETURNING *',
+      [alertId]
     );
-    let flowCache: any = null;
-    if (needsFlows) {
-      flowCache = await this.fiidii.getRecentFlows();
+    if (res.rows.length === 0) throw new Error(`Alert ${alertId} not found`);
+    return this.rowToAlert(res.rows[0]);
+  }
+
+  /**
+   * Scan all active alerts and evaluate conditions
+   */
+  async scanAlerts(userId?: string): Promise<{ triggered: CompoundAlert[]; total: number }> {
+    let query = 'SELECT * FROM compound_alerts WHERE is_active = TRUE';
+    const params: any[] = [];
+    if (userId) {
+      query += ' AND user_id = $1';
+      params.push(userId);
     }
 
-    // Evaluate
-    for (const alert of alertsToCheck) {
+    const res = await this.pool.query(query, params);
+    const triggered: CompoundAlert[] = [];
+
+    for (const row of res.rows) {
+      const alert = this.rowToAlert(row);
       try {
-        const isTriggered = await this.evaluateSingleAlert(alert, dataCache, flowCache);
-        
-        if (isTriggered) {
-          await this.triggerAlert(alert);
+        const wasTriggered = await this.evaluateAlert(alert);
+        if (wasTriggered) {
+          triggered.push(alert);
+
+          // Record trigger in history
+          await this.pool.query(
+            `INSERT INTO alert_trigger_history (alert_id, evaluation_results)
+             VALUES ($1, $2)`,
+            [alert.id, JSON.stringify({ conditions: alert.conditions, triggeredAt: new Date().toISOString() })]
+          );
+
+          // Update last triggered
+          await this.pool.query(
+            'UPDATE compound_alerts SET last_triggered = NOW() WHERE id = $1',
+            [alert.id]
+          );
         }
-      } catch (error) {
-        this.logger.error(`Failed to evaluate alert ${alert.id}`, error);
+      } catch (e) {
+        this.logger.warn(`Failed to evaluate alert ${alert.id}: ${(e as Error).message}`);
       }
     }
+
+    return { triggered, total: res.rows.length };
   }
 
-  private async evaluateSingleAlert(
-    alert: CompoundAlert, 
-    dataCache: Map<string, any>,
-    flowCache: any
-  ): Promise<boolean> {
-    let results: boolean[] = [];
+  /**
+   * Evaluate all conditions of a single alert
+   */
+  private async evaluateAlert(alert: CompoundAlert): Promise<boolean> {
+    const results: boolean[] = [];
 
     for (const condition of alert.conditions) {
-      let currentValue: number | string = 0;
-
-      // 1. Fetch required metric
-      if (condition.metric === 'PRICE') {
-        if (!dataCache.has(`price_${alert.symbol}`)) {
-          const quote = await this.marketData.fetchCurrentQuote(alert.symbol);
-          if (quote) dataCache.set(`price_${alert.symbol}`, quote.price);
-        }
-        currentValue = dataCache.get(`price_${alert.symbol}`) || 0;
-      } 
-      else if (condition.metric === 'PCR') {
-        if (!dataCache.has(`pcr_${alert.symbol}`)) {
-          const oi = await this.options.getOIAnalysis(alert.symbol);
-          dataCache.set(`pcr_${alert.symbol}`, oi.pcrRatio);
-        }
-        currentValue = dataCache.get(`pcr_${alert.symbol}`);
-      }
-      else if (condition.metric === 'FII_NET' && flowCache) {
-        currentValue = flowCache.fiiNetLast5Days;
-      }
-
-      // 2. Evaluate condition
-      const passed = this.compare(currentValue, condition.operator, condition.value);
+      const metricValue = await this.getMetricValue(alert.symbol, condition.metric);
+      const passed = this.evaluateCondition(metricValue, condition.operator, condition.value);
       results.push(passed);
     }
 
-    // 3. Apply Logic (AND / OR)
-    if (alert.logic === 'AND') {
-      return results.every(r => r === true);
-    } else {
-      return results.some(r => r === true);
+    return alert.logic === 'AND'
+      ? results.every(r => r)
+      : results.some(r => r);
+  }
+
+  /**
+   * Fetch the current value of a metric
+   */
+  private async getMetricValue(symbol: string, metric: AlertMetric): Promise<number> {
+    switch (metric) {
+      case 'PRICE': {
+        const quote = await this.marketData.fetchCurrentQuote(symbol);
+        return quote?.price || 0;
+      }
+      case 'RSI': {
+        const chartResult = await this.marketData.fetchDailyBars(symbol, 30);
+        const closes = chartResult.bars.map((b: any) => b.close);
+        const rsiValues = RSI.calculate({ period: 14, values: closes });
+        return rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : 50;
+      }
+      case 'PCR': {
+        const oi = await this.options.getOIAnalysis(symbol);
+        return oi.pcrRatio;
+      }
+      case 'FII_NET': {
+        const flows = await this.fiidii.getRecentFlows();
+        return flows.fiiNetLast5Days;
+      }
+      case 'DII_NET': {
+        const flows = await this.fiidii.getRecentFlows();
+        return flows.diiNetLast5Days;
+      }
+      case 'MAX_PAIN_DIFF': {
+        const mp = await this.options.getMaxPain(symbol);
+        const quote = await this.marketData.fetchCurrentQuote(symbol);
+        return quote?.price ? ((quote.price - mp.maxPainStrike) / mp.maxPainStrike) * 100 : 0;
+      }
+      default:
+        return 0;
     }
   }
 
-  private compare(current: any, operator: AlertOperator, target: any): boolean {
-    const numC = Number(current);
-    const numT = Number(target);
-
+  /**
+   * Evaluate a single condition
+   */
+  private evaluateCondition(metricValue: number, operator: AlertOperator, target: number | string): boolean {
+    const numTarget = Number(target);
     switch (operator) {
-      case '>': return numC > numT;
-      case '<': return numC < numT;
-      case '>=': return numC >= numT;
-      case '<=': return numC <= numT;
-      case '==': return current == target;
-      case '!=': return current != target;
-      case 'TRENDS': return String(current).toLowerCase() === String(target).toLowerCase();
+      case '>': return metricValue > numTarget;
+      case '<': return metricValue < numTarget;
+      case '>=': return metricValue >= numTarget;
+      case '<=': return metricValue <= numTarget;
+      case '==': return metricValue === numTarget;
+      case '!=': return metricValue !== numTarget;
       default: return false;
     }
   }
 
-  private async triggerAlert(alert: CompoundAlert): Promise<void> {
-    // Only trigger if it hasn't fired in the last 15 minutes
-    const now = new Date();
-    if (alert.lastTriggered) {
-      const last = new Date(alert.lastTriggered);
-      const diffMins = (now.getTime() - last.getTime()) / 60000;
-      if (diffMins < 15) return;
-    }
-
-    this.logger.info(`🔔 ALERT TRIGGERED: [${alert.name}] for ${alert.symbol}`);
-    
-    // Update state
-    alert.lastTriggered = now.toISOString();
-
-    // Send notification (Email/Telegram/Push)
-    await this.notifications.sendCustomEmail(
-      'user@example.com', // In prod, map userId to email
-      `🚨 ${alert.symbol} Alert: ${alert.name}`,
-      `Your compound alert "${alert.name}" regarding ${alert.symbol} has met the specified conditions.\nTime: ${alert.lastTriggered}`
+  /**
+   * Get trigger history for a specific alert
+   */
+  async getAlertHistory(alertId: number, limit: number = 20): Promise<any[]> {
+    const res = await this.pool.query(
+      'SELECT * FROM alert_trigger_history WHERE alert_id = $1 ORDER BY triggered_at DESC LIMIT $2',
+      [alertId, limit]
     );
+    return res.rows;
+  }
+
+  private rowToAlert(row: any): CompoundAlert {
+    const conditions = typeof row.conditions === 'string' ? JSON.parse(row.conditions) : (row.conditions || []);
+    return {
+      id: row.id,
+      userId: row.user_id,
+      symbol: row.symbol,
+      name: row.name,
+      conditions,
+      logic: row.logic,
+      isActive: row.is_active,
+      lastTriggered: row.last_triggered?.toISOString(),
+    };
   }
 }

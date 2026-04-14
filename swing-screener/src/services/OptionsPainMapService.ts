@@ -45,9 +45,12 @@ export class OptionsPainMapService extends BaseService {
    * Strips out empty strikes and calculates localized support/resistance.
    */
   async generatePainMap(symbol: string, expiry?: string): Promise<PainMapData> {
-    const chain = await this.nseDataService.compileOptionChain(symbol, expiry);
+    // Single API call — getOIAnalysis internally calls compileOptionChain
     const analysis = await this.optionsService.getOIAnalysis(symbol, expiry);
+    // We still need the raw chain data for per-strike iteration
+    const chain = await this.nseDataService.compileOptionChain(symbol, expiry);
     const underlying = chain.underlyingValue;
+    const maxPainStrike = chain.maxPain;
     
     // Narrow down to sensible strikes (+/- 15% from spot)
     const minStrike = underlying * 0.85;
@@ -78,21 +81,17 @@ export class OptionsPainMapService extends BaseService {
       }
     }
 
-    const { maxPainStrike } = await this.optionsService.getMaxPain(symbol, expiry);
-
     // Build Heatmap dataset
+    const denominator = (maxCallOInear + maxPutOInear) || 1; // Guard against division by zero
     const heatmap: PainMapStrike[] = validStrikes.map((s: any) => {
       const callOI = s.CE?.openInterest || 0;
       const putOI = s.PE?.openInterest || 0;
       const strike = s.strikePrice;
       const isMaxPain = strike === maxPainStrike;
 
-      // Calculate relative pain gradient for the visual map
-      // A strike has high "pain value" if it has massive overlapping OI
       const totalOI = callOI + putOI;
-      const painValue = Math.round((totalOI / (maxCallOInear + maxPutOInear)) * 100);
-
-      const distanceFromSpot = ((strike - underlying) / underlying) * 100;
+      const painValue = Math.round((totalOI / denominator) * 100);
+      const distanceFromSpot = Math.round(((strike - underlying) / underlying) * 10000) / 100;
 
       return {
         strikePrice: strike,
@@ -115,8 +114,8 @@ export class OptionsPainMapService extends BaseService {
       maxPainStrike,
       bullishSupportStrike: analysis.maxPutOI.strike,
       bearishResistanceStrike: analysis.maxCallOI.strike,
-      totalCallOI: analysis.pcrRatio === 0 ? 0 : 1, // Normalized calculation happens in frontend via PCR
-      totalPutOI: analysis.pcrRatio === 0 ? 0 : analysis.pcrRatio,
+      totalCallOI: analysis.totalCallOI,
+      totalPutOI: analysis.totalPutOI,
       pcr: analysis.pcrRatio,
       heatmap
     };

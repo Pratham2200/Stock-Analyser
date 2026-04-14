@@ -48,6 +48,12 @@ export class WhatIfSimulator extends BaseService {
   async simulateStrategy(params: SimulationParams): Promise<SimulationResult> {
     const { symbol, legs, currentSpot, targetDate, targetIVChangePercent, priceRangePercent, steps } = params;
 
+    // Input validation
+    if (!legs || legs.length === 0) throw new Error('At least one strategy leg is required');
+    if (steps <= 0) throw new Error('Steps must be a positive integer');
+    if (priceRangePercent <= 0 || priceRangePercent > 100) throw new Error('priceRangePercent must be between 1 and 100');
+    if (currentSpot <= 0) throw new Error('currentSpot must be positive');
+
     // Calculate days to target date
     const now = new Date();
     const target = new Date(targetDate);
@@ -80,17 +86,26 @@ export class WhatIfSimulator extends BaseService {
       else netPremium += value;
     }
 
-    // Now calculate simulated PnL at the structural target date using Black-Scholes
+    // Now calculate simulated PnL at the target date using Black-Scholes
     // For each price step, re-price every option leg using modified T and IV
     const payoffData = standardAnalysis.payoffData.map(point => {
       const simulatedPrice = point.underlyingPrice;
       let simulatedTotalPnL = 0;
 
       for (const leg of normalizedLegs) {
-        // Original time to expiry (assuming standard 30 DTE if not provided, 
-        // in a real scenario we'd track exact expiry per leg)
-        // For simulation, we assume the user intends to close `daysToTarget` days from now
-        const baseTimeToExpiry = 30 / 365; // Approximate 1 month
+        // Calculate real time-to-expiry from the leg's expiry date
+        // If leg has no expiryDate, estimate from the target date + 7 days buffer
+        let legExpiryMs: number;
+        if ((leg as any).expiryDate) {
+          legExpiryMs = new Date((leg as any).expiryDate).getTime();
+        } else {
+          // Fallback: assume expiry is the nearest monthly expiry (~last Thursday)
+          // Use target date + 7 days as a reasonable estimate
+          legExpiryMs = target.getTime() + (7 * 24 * 60 * 60 * 1000);
+        }
+
+        const totalDaysToExpiry = Math.max(0.5, (legExpiryMs - now.getTime()) / (1000 * 60 * 60 * 24));
+        const baseTimeToExpiry = totalDaysToExpiry / 365;
         const newTimeToExpiry = Math.max(0.001, baseTimeToExpiry - (daysToTarget / 365));
 
         // Adjust IV
@@ -119,7 +134,7 @@ export class WhatIfSimulator extends BaseService {
 
       return {
         underlyingPrice: simulatedPrice,
-        payoff: point.payoff, // Expiry payoff remains the same
+        payoff: point.payoff,
         simulatedPnL: Math.round(simulatedTotalPnL * 100) / 100
       };
     });

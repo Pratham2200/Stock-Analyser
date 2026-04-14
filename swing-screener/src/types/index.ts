@@ -2,6 +2,7 @@
 
 // Database Types
 export interface DatabaseConfig {
+  connectionString?: string;
   host: string;
   port: number;
   database: string;

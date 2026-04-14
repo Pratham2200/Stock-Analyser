@@ -115,7 +115,7 @@ export class ScraperService extends BaseService {
   }
 
   private async launchBrowser(): Promise<puppeteer.Browser> {
-    return await puppeteer.launch({
+    const launchOptions: any = {
       headless: 'new',
       args: [
         '--no-sandbox',
@@ -125,7 +125,14 @@ export class ScraperService extends BaseService {
         '--disable-features=VizDisplayCompositor',
         '--disable-blink-features=AutomationControlled'
       ]
-    });
+    };
+
+    // Use system Chromium in Docker/cloud environments
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    return await puppeteer.launch(launchOptions);
   }
 
   private async setupPage(page: puppeteer.Page): Promise<void> {

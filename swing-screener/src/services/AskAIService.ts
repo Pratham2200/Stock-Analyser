@@ -2,6 +2,7 @@
 // Orchestrates: symbol extraction → parallel data fetch → AI response
 
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { Pool } from 'pg';
 import { BaseService } from './BaseService';
 import { NseDataService } from './NseDataService';
 import { SentimentService, SentimentResult } from './SentimentService';
@@ -47,12 +48,14 @@ export class AskAIService extends BaseService {
   private nseData: NseDataService;
   private sentimentService: SentimentService;
   private optionsService: OptionsService | null;
+  private pool: Pool | null;
 
   constructor(
     nseData: NseDataService,
     sentimentService: SentimentService,
     optionsService?: OptionsService,
     apiKey?: string,
+    pool?: Pool,
   ) {
     super('AskAIService');
 
@@ -72,6 +75,7 @@ export class AskAIService extends BaseService {
     this.nseData = nseData;
     this.sentimentService = sentimentService;
     this.optionsService = optionsService || null;
+    this.pool = pool || null;
   }
 
   /**
@@ -95,7 +99,9 @@ export class AskAIService extends BaseService {
     const text = response.response.text();
     const tokensUsed = response.response.usageMetadata?.totalTokenCount || 0;
 
-    return {
+    const processingTimeMs = Date.now() - startTime;
+
+    const result: AskAIResponse = {
       answer: text,
       sources,
       dataUsed: {
@@ -105,8 +111,25 @@ export class AskAIService extends BaseService {
         news: dataBundle.sentiments.some(s => s.sources.some(src => src.name.includes('News'))),
       },
       tokensUsed,
-      processingTimeMs: Date.now() - startTime,
+      processingTimeMs,
     };
+
+    // Persist conversation to database (non-blocking)
+    if (this.pool) {
+      const sessionId = `session_${Date.now()}`;
+      this.pool.query(
+        `INSERT INTO ai_conversations (user_id, session_id, role, content, sources, data_used, tokens_used, processing_time_ms)
+         VALUES ($1, $2, 'user', $3, NULL, NULL, 0, 0),
+                ($1, $2, 'assistant', $4, $5, $6, $7, $8)`,
+        [
+          'default_user', sessionId, request.prompt,
+          text, JSON.stringify(sources), JSON.stringify(result.dataUsed),
+          tokensUsed, processingTimeMs
+        ]
+      ).catch(err => this.logger.debug('Failed to persist conversation', err));
+    }
+
+    return result;
   }
 
   /**

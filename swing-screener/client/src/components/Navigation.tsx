@@ -41,7 +41,9 @@ import {
   Analytics,
   Speed,
   Security,
-  Psychology
+  Psychology,
+  SmartToy,
+  Explore
 } from '@mui/icons-material';
 
 interface NavigationProps {
@@ -57,13 +59,18 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
   const navigate = useNavigate();
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: <Dashboard />, color: 'primary' },
-    { id: 'scan', label: 'Run Scan', icon: <Search />, color: 'warning' },
+    { id: 'overview', label: 'Market Overview', icon: <Dashboard />, color: 'primary' },
+    { id: 'terminal', label: 'Pro Terminal', icon: <Analytics />, color: 'secondary' },
+    { id: 'trade', label: 'Trade Desk', icon: <AccountBalance />, color: 'success' },
+    { id: 'feed', label: 'Discovery Feed', icon: <Explore />, color: 'info' },
+    { id: 'dashboard', label: 'Pro Scanner', icon: <Search />, color: 'warning' },
+    { id: 'scan', label: 'Run New Scan', icon: <Assessment />, color: 'info' },
     { id: 'observations', label: 'AI Queue', icon: <Psychology />, color: 'secondary' },
     { id: 'scanned', label: 'All Scanner Stocks', icon: <TableChart />, color: 'secondary' },
     { id: 'selected', label: 'Selected Stocks', icon: <TrendingUp />, color: 'success' },
     { id: 'rejected', label: 'Rejected Stocks', icon: <TrendingDown />, color: 'error' },
-    { id: 'summary', label: 'Performance Summary', icon: <BarChart />, color: 'info' }
+    { id: 'summary', label: 'Performance Summary', icon: <BarChart />, color: 'info' },
+    { id: 'ask-ai', label: 'Ask AI', icon: <SmartToy />, color: 'primary' }
   ];
 
   const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {

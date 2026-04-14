@@ -34,6 +34,14 @@ import { CompoundAlertService } from './services/CompoundAlertService';
 import { SectorRotationService } from './services/SectorRotationService';
 import { EarningsWhisperService } from './services/EarningsWhisperService';
 import { PaperTradingService } from './services/PaperTradingService';
+import { TradeCardService } from './services/TradeCardService';
+import { LeaderboardService } from './services/LeaderboardService';
+import { CorrelationMatrixService } from './services/CorrelationMatrixService';
+import { UnusualActivityService } from './services/UnusualActivityService';
+import { EventCalendarService } from './services/EventCalendarService';
+import { MultiTimeframeService } from './services/MultiTimeframeService';
+import { WatchlistService } from './services/WatchlistService';
+import { TradeIdeaService } from './services/TradeIdeaService';
 
 // Repositories
 import { StockRepository } from './repositories/StockRepository';
@@ -79,6 +87,10 @@ export class App {
     try {
       await this.pool.query('SELECT 1');
       this.logger.info('Database connection established');
+
+      // Enable persistent logging to system_logs table
+      Logger.setPool(this.pool);
+      this.logger.info('Persistent DB logging enabled');
     } catch (error) {
       this.logger.error('Database connection failed:', error);
       throw error;
@@ -108,9 +120,13 @@ export class App {
     this.app.use(express.json({ limit: '10mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-    // Request logging
-    this.app.use((req, _res, next) => {
-      this.logger.info(`${req.method} ${req.path} - ${req.get('User-Agent') || 'Unknown'}`);
+    // Request/Response logging with timing (persisted to system_logs)
+    this.app.use((req, res, next) => {
+      const start = Date.now();
+      res.on('finish', () => {
+        const duration = Date.now() - start;
+        Logger.logRequest(req.method, req.path, res.statusCode, duration);
+      });
       next();
     });
   }
@@ -139,32 +155,67 @@ export class App {
     const insiderService = new InsiderTrackingService(nseDataService);
     const fiidiiService = new FiiDiiService(nseDataService);
     
-    // Initialize Compound Alerts
+    // Initialize Compound Alerts (Phase D: persistent)
     const compoundAlertService = new CompoundAlertService(
       marketDataService,
       optionsService,
       fiidiiService,
-      notificationService
+      notificationService,
+      this.pool
     );
     
     // Initialize Sector Rotation
-    const sectorRotationService = new SectorRotationService(nseDataService, marketDataService);
+    const sectorRotationService = new SectorRotationService(nseDataService);
 
-    // Initialize Paper Trading
-    const paperTradingService = new PaperTradingService(marketDataService);
+    // Initialize Paper Trading (Phase D: persistent)
+    const paperTradingService = new PaperTradingService(marketDataService, this.pool);
 
-    // Initialize AI + Sentiment services
-    const aiAnalysisService = new AIAnalysisService();
+    // Initialize AI + Sentiment services (must come before Phases 14-21 that depend on them)
+    let aiAnalysisService: AIAnalysisService | null = null;
     const sentimentService = new SentimentService();
-    const tradeJournalService = new AiTradeJournalService(aiAnalysisService, this.pool);
-    const earningsWhisperService = new EarningsWhisperService(aiAnalysisService, sentimentService, marketDataService);
+    let tradeJournalService: AiTradeJournalService | null = null;
+    let earningsWhisperService: EarningsWhisperService | null = null;
+
+    try {
+      aiAnalysisService = new AIAnalysisService();
+      tradeJournalService = new AiTradeJournalService(aiAnalysisService, this.pool);
+      earningsWhisperService = new EarningsWhisperService(aiAnalysisService, sentimentService, marketDataService);
+      this.logger.info('AI Analysis services initialized');
+    } catch (error) {
+      this.logger.warn('AI Analysis services not available (missing GEMINI_API_KEY). Trade Journal and Earnings Whisper disabled.');
+    }
+
     let askAIService: AskAIService | null = null;
     try {
-      askAIService = new AskAIService(nseDataService, sentimentService, optionsService);
+      askAIService = new AskAIService(nseDataService, sentimentService, optionsService, undefined, this.pool);
       this.logger.info('AskAI service initialized');
     } catch (error) {
       this.logger.warn('AskAI service not available (missing GEMINI_API_KEY)');
     }
+
+    // Phase 14: Trade Cards (Phase D: persistent)
+    const tradeCardService = new TradeCardService(marketDataService, aiAnalysisService, this.pool);
+
+    // Phase 15: Leaderboard (Phase D: direct SQL)
+    const leaderboardService = new LeaderboardService(this.pool);
+
+    // Phase 16: Correlation Matrix
+    const correlationService = new CorrelationMatrixService(marketDataService);
+
+    // Phase 17: Unusual Activity Detector
+    const unusualActivityService = new UnusualActivityService(marketDataService, optionsService);
+
+    // Phase 18: Event Calendar
+    const eventCalendarService = new EventCalendarService(aiAnalysisService);
+
+    // Phase 19: Multi-Timeframe Dashboard
+    const multiTimeframeService = new MultiTimeframeService(marketDataService);
+
+    // Phase 20: AI Watchlist (Phase D: persistent)
+    const watchlistService = new WatchlistService(marketDataService, aiAnalysisService, this.pool);
+
+    // Phase 21: AI Trade Ideas (Phase D: persistent)
+    const tradeIdeaService = new TradeIdeaService(aiAnalysisService, marketDataService, sentimentService, optionsService, this.pool);
 
     // Initialize scan service with all dependencies
     const scanService = new ScanService(
@@ -201,6 +252,14 @@ export class App {
       sectorRotationService,
       earningsWhisperService,
       paperTradingService,
+      tradeCardService,
+      leaderboardService,
+      correlationService,
+      unusualActivityService,
+      eventCalendarService,
+      multiTimeframeService,
+      watchlistService,
+      tradeIdeaService,
     };
 
     this.app.locals.repositories = {
@@ -257,9 +316,11 @@ export class App {
       const port = this.config.dashboard.port;
 
       this.server = this.app.listen(port, () => {
-        this.logger.info(`🚀 Server running on http://localhost:${port}`);
-        this.logger.info(`📊 API available at http://localhost:${port}/api`);
-        this.logger.info(`🎯 Frontend available at http://localhost:5173`);
+        this.logger.info(`🚀 Server running on port ${port}`);
+        this.logger.info(`📊 API available at /api`);
+        if (process.env.NODE_ENV !== 'production') {
+          this.logger.info(`🎯 Frontend dev server at http://localhost:5173`);
+        }
       });
 
       // Graceful shutdown

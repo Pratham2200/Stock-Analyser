@@ -3,19 +3,27 @@
 import { AppConfig } from '../types';
 
 export function createConfig(): AppConfig {
+  // Determine SSL: enable for production or when DATABASE_URL is set (cloud DBs need SSL)
+  const isProduction = process.env.NODE_ENV === 'production';
+  const hasDbUrl = !!process.env.DATABASE_URL;
+  const sslConfig = (process.env.DB_SSL === 'true' || isProduction || hasDbUrl)
+    ? { rejectUnauthorized: false }
+    : false;
+
   return {
     env: process.env.NODE_ENV || 'development',
     logLevel: process.env.LOG_LEVEL || 'info',
     database: {
+      connectionString: process.env.DATABASE_URL || undefined,
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '5432'),
       database: process.env.DB_NAME || 'stock_analysis',
       user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'password',
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      ssl: sslConfig,
       max: parseInt(process.env.DB_MAX_CONNECTIONS || '10'),
       idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '30000'),
-      connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '2000')
+      connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '5000')
     },
     email: {
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -30,7 +38,7 @@ export function createConfig(): AppConfig {
       scanCron: process.env.SCHEDULER_CRON || '0 9 * * 1-5' // 9 AM on weekdays
     },
     dashboard: {
-      port: parseInt(process.env.DASHBOARD_PORT || '4000'),
+      port: parseInt(process.env.PORT || process.env.DASHBOARD_PORT || '4000'),
       enabled: process.env.DASHBOARD_ENABLED !== 'false'
     },
     notifications: {

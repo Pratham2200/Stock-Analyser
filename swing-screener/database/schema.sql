@@ -159,5 +159,88 @@ CREATE INDEX IF NOT EXISTS idx_stocks_scan_id ON stocks(scan_id);
 CREATE INDEX IF NOT EXISTS idx_stocks_symbol ON stocks(symbol);
 CREATE INDEX IF NOT EXISTS idx_stock_analysis_stock_id ON stock_analysis(stock_id);
 CREATE INDEX IF NOT EXISTS idx_stock_analysis_scan_id ON stock_analysis(scan_id);
-CREATE INDEX IF NOT EXISTS idx_selected_stocks_stock_id ON selected_stocks(stock_id);
 CREATE INDEX IF NOT EXISTS idx_selected_stocks_scan_id ON selected_stocks(scan_id);
+
+-- ==========================================
+-- PHASE D: Premium Feature Persistence
+-- ==========================================
+
+-- 7. System Logs (Phase D)
+CREATE TABLE IF NOT EXISTS system_logs (
+    id SERIAL PRIMARY KEY,
+    level VARCHAR(20) NOT NULL,
+    service VARCHAR(100) NOT NULL,
+    message TEXT NOT NULL,
+    meta JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 8. Paper Trading Portfolios (Phase 13)
+CREATE TABLE IF NOT EXISTS paper_portfolios (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(50) DEFAULT 'default_user',
+    cash DECIMAL(15,2) DEFAULT 1000000.00,
+    total_value DECIMAL(15,2) DEFAULT 1000000.00,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 9. Paper Trading Positions (Phase 13)
+CREATE TABLE IF NOT EXISTS paper_positions (
+    id SERIAL PRIMARY KEY,
+    portfolio_id INTEGER REFERENCES paper_portfolios(id),
+    symbol VARCHAR(20) NOT NULL,
+    quantity INTEGER NOT NULL,
+    average_price DECIMAL(10,2) NOT NULL,
+    current_price DECIMAL(10,2),
+    pnl DECIMAL(12,2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(portfolio_id, symbol)
+);
+
+-- 10. Paper Trade History (Phase 13)
+CREATE TABLE IF NOT EXISTS paper_trade_history (
+    id SERIAL PRIMARY KEY,
+    portfolio_id INTEGER REFERENCES paper_portfolios(id),
+    symbol VARCHAR(20) NOT NULL,
+    type VARCHAR(10) NOT NULL, -- 'BUY' or 'SELL'
+    quantity INTEGER NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 11. AI Trade Journal (Phase 9)
+CREATE TABLE IF NOT EXISTS trade_journals (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(50) DEFAULT 'default_user',
+    symbol VARCHAR(20) NOT NULL,
+    type VARCHAR(10) NOT NULL,
+    pnl DECIMAL(12,2),
+    ai_insight TEXT,
+    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 12. AI Watchlist (Phase 20)
+CREATE TABLE IF NOT EXISTS ai_watchlists (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(50) DEFAULT 'default_user',
+    symbol VARCHAR(20) NOT NULL,
+    target_price DECIMAL(10,2),
+    stop_loss DECIMAL(10,2),
+    notes TEXT,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 13. AI Trade Ideas (Phase 21)
+CREATE TABLE IF NOT EXISTS ai_trade_ideas (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL,
+    bias VARCHAR(20),
+    timeframe VARCHAR(20),
+    rationale TEXT,
+    conviction_score INTEGER,
+    upvotes INTEGER DEFAULT 0,
+    downvotes INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

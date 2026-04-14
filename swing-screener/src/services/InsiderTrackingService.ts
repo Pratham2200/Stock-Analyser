@@ -153,8 +153,15 @@ export class InsiderTrackingService extends BaseService {
     const topBuys = Array.from(buyMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(x => x[0]);
     const topSells = Array.from(sellMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(x => x[0]);
 
+    // Calculate overall flow direction
+    const totalBuyValue = Array.from(buyMap.values()).reduce((sum, v) => sum + v, 0);
+    const totalSellValue = Array.from(sellMap.values()).reduce((sum, v) => sum + v, 0);
+    const netFlow = totalBuyValue - totalSellValue;
+    // Threshold: ₹50 Cr net flow (500000000)
+    const overallSignal = netFlow > 500000000 ? 'bullish' : netFlow < -500000000 ? 'bearish' : 'neutral';
+
     return {
-      overallSignal: 'neutral', // TODO: Aggregate all sum
+      overallSignal,
       topBuySymbols: topBuys,
       topSellSymbols: topSells
     };

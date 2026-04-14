@@ -5,9 +5,11 @@
   "main": "main.ts",
   "scripts": {
     "start": "ts-node main.ts",
+    "start:prod": "node dist/main.js",
     "dev": "nodemon --exec ts-node main.ts",
     "build": "tsc",
-    "build:client": "cd client && npm run build",
+    "build:client": "cd client && npm install && npm run build",
+    "build:all": "npm run build && npm run build:client",
     "dev:client": "cd client && npm run dev",
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:client\"",
     "db:setup": "psql -d stock_analysis -f database/schema.sql",

@@ -1,0 +1,26 @@
+node_modules
+client/node_modules
+.git
+.gitignore
+.env
+.env.local
+.env.production
+*.log
+coverage
+.nyc_output
+.vscode
+.idea
+.DS_Store
+dist
+client/dist
+tests
+*.md
+*.sh
+.prettierrc
+eslint.config.js
+vitest.config.ts
+server.log
+test-results.log
+tradingview
+scripts
+untitled folder
