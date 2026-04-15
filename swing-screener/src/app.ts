@@ -98,6 +98,11 @@ export class App {
   }
 
   private async setupMiddleware(): Promise<void> {
+    // Trust proxy when behind a reverse proxy (DigitalOcean, Nginx, etc.)
+    if (process.env.NODE_ENV === 'production') {
+      this.app.set('trust proxy', 1);
+    }
+
     // Security middleware
     this.app.use(helmet());
     this.app.use(cors({
