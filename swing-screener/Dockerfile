@@ -6,12 +6,12 @@ FROM node:20-slim AS builder
 WORKDIR /app
 
 # Install backend dependencies
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+COPY package.json package-lock.json* ./
+RUN npm install --ignore-scripts
 
 # Install client dependencies
-COPY client/package.json client/package-lock.json ./client/
-RUN cd client && npm ci
+COPY client/package.json client/package-lock.json* ./client/
+RUN cd client && npm install
 
 # Copy source code
 COPY . .
@@ -57,8 +57,8 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 WORKDIR /app
 
 # Copy package files and install production deps only
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev --ignore-scripts
 
 # Copy compiled backend from builder
 COPY --from=builder /app/dist ./dist
